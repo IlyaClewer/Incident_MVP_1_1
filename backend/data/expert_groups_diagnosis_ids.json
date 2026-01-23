@@ -1,0 +1,109 @@
+{
+  "expert_groups": [
+    {
+      "id": "pharmacology",
+      "title": "Фармакологи",
+      "trigger_keys": [
+        "ТРИГГЕР K+",
+        "ТРИГГЕР ТРОМБОЦИТЫ",
+        "ТРИГГЕР ГЕМОГЛОБИН",
+        "ТРИГГЕР КРЕАТИНИН"
+      ],
+      "event_ids": [
+        26,
+        33,
+        34,
+        36
+      ],
+      "diagnosis_ids": [
+        "hit",
+        "aki",
+        "drug_hyperkalemia"
+      ]
+    },
+    {
+      "id": "surgery",
+      "title": "Хирурги",
+      "trigger_keys": [
+        "ТРИГГЕР ПОВТ ХИРУРГ ВМЕШ",
+        "ТРИГГЕР ГЕМАТОМА ПРИ УЗИ МТ"
+      ],
+      "event_ids": [
+        25,
+        56
+      ],
+      "diagnosis_ids": [
+        "reoperation"
+      ]
+    },
+    {
+      "id": "epidemiology",
+      "title": "Эпидемиологи",
+      "trigger_keys": [
+        "ТРИГГЕР ЛИХОРАДКА"
+      ],
+      "event_ids": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "diagnosis_ids": []
+    },
+    {
+      "id": "vascular",
+      "title": "Сосудистые (тромбозы)",
+      "trigger_keys": [
+        "ТРИГГЕР ТГВ ПРИ УЗАС ВЕН"
+      ],
+      "event_ids": [
+        29,
+        30
+      ],
+      "diagnosis_ids": [
+        "dvt"
+      ]
+    },
+    {
+      "id": "cardiology",
+      "title": "Кардиологи",
+      "trigger_keys": [
+        "ТРИГГЕР ТРОПОНИН I"
+      ],
+      "event_ids": [
+        39
+      ],
+      "diagnosis_ids": []
+    }
+  ],
+  "diagnosis_ids_unassigned": [
+    "allergic_other",
+    "anaphylaxis",
+    "c_difficile",
+    "cardiac_arrest_or_acute_hf",
+    "clabsi1",
+    "clabsi2",
+    "drug_bleeding",
+    "drug_hypoglycemia",
+    "fall_no_injury",
+    "fall_with_injury",
+    "neuro_trauma",
+    "organ_injury",
+    "pe",
+    "pneumonia_non_vap",
+    "postop_bleeding_or_hematoma_no_reop",
+    "postop_mi",
+    "pressure_ulcer_2_4",
+    "pwi",
+    "sepsis",
+    "stroke_inhospital",
+    "superficial_vein_thrombosis",
+    "urinary_retention_post_catheter",
+    "uti",
+    "vap"
+  ]
+}

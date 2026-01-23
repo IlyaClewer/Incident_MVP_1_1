@@ -1,0 +1,55 @@
+{
+  "expert_groups": [
+    {
+      "id": "pharmacology",
+      "title": "Фармакологи",
+      "diagnosis_ids": ["hit", "aki", "drug_hyperkalemia"]
+    },
+    {
+      "id": "surgery",
+      "title": "Хирурги",
+      "diagnosis_ids": ["reoperation"]
+    },
+    {
+      "id": "epidemiology",
+      "title": "Эпидемиологи",
+      "diagnosis_ids": []
+    },
+    {
+      "id": "vascular",
+      "title": "Сосудистые (тромбозы)",
+      "diagnosis_ids": ["dvt"]
+    },
+    {
+      "id": "cardiology",
+      "title": "Кардиологи",
+      "diagnosis_ids": []
+    }
+  ],
+  "diagnosis_ids_unassigned": [
+    "allergic_other",
+    "anaphylaxis",
+    "c_difficile",
+    "cardiac_arrest_or_acute_hf",
+    "clabsi1",
+    "clabsi2",
+    "drug_bleeding",
+    "drug_hypoglycemia",
+    "fall_no_injury",
+    "fall_with_injury",
+    "neuro_trauma",
+    "organ_injury",
+    "pe",
+    "pneumonia_non_vap",
+    "postop_bleeding_or_hematoma_no_reop",
+    "postop_mi",
+    "pressure_ulcer_2_4",
+    "pwi",
+    "sepsis",
+    "stroke_inhospital",
+    "superficial_vein_thrombosis",
+    "urinary_retention_post_catheter",
+    "uti",
+    "vap"
+  ]
+}

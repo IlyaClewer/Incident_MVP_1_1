@@ -1,0 +1,238 @@
+{
+  "diagnoses": [
+    {
+      "id": "pwi",
+      "name": "ИОХВ (Postoperative wound infection)",
+      "formulas": [],
+      "stac_card_ids": []
+    },
+    {
+      "id": "sepsis",
+      "name": "Инфекция кровотока (Sepsis)",
+      "formulas": [],
+      "stac_card_ids": []
+    },
+    {
+      "id": "clabsi1",
+      "name": "КАИК (Central line associated infection)",
+      "formulas": [],
+      "stac_card_ids": []
+    },
+    {
+      "id": "uti",
+      "name": "ИМП (Urinary tract infection)",
+      "formulas": [],
+      "stac_card_ids": []
+    },
+    {
+      "id": "clabsi2",
+      "name": "КАИМП (Central line associated infection)",
+      "formulas": [],
+      "stac_card_ids": []
+    },
+    {
+      "id": "vap",
+      "name": "ВАП (Ventilator-associated pneumonia)",
+      "formulas": [],
+      "stac_card_ids": []
+    },
+    {
+      "id": "pneumonia_non_vap",
+      "name": "Пневмония (исключая ВАП)",
+      "formulas": [],
+      "stac_card_ids": []
+    },
+    {
+      "id": "reoperation",
+      "name": "Повторные хирургические вмешательства (Reoperation)",
+      "formulas": [
+        "Event 25"
+      ],
+      "stac_card_ids": [
+        1394968672,
+        1404600742,
+        1411479138,
+        1391561747,
+        1398518198,
+        1380313558,
+        1388390209,
+        1403910749,
+        1398403729,
+        1389677159,
+        1399807587,
+        1403568470,
+        1395201596,
+        1405690262,
+        1412189339,
+        1404348814
+      ]
+    },
+    {
+      "id": "postop_bleeding_or_hematoma_no_reop",
+      "name": "Постоперационные кровотечения/гематомы не требующие повторной операции",
+      "formulas": [],
+      "stac_card_ids": []
+    },
+    {
+      "id": "organ_injury",
+      "name": "Повреждение органов (Organ injury)",
+      "formulas": [],
+      "stac_card_ids": []
+    },
+    {
+      "id": "dvt",
+      "name": "ТГВ нижних/верхних конечностей, тромбоз яремных вен",
+      "formulas": [
+        "Event 29/Event 30"
+      ],
+      "stac_card_ids": [
+        1411454224,
+        1395445577,
+        1401084661,
+        1397152178,
+        1395523612,
+        1398384516,
+        1414625245
+      ]
+    },
+    {
+      "id": "pe",
+      "name": "ТЭЛА",
+      "formulas": [
+        "Event 32"
+      ],
+      "stac_card_ids": []
+    },
+    {
+      "id": "superficial_vein_thrombosis",
+      "name": "Тромбофлебит/флебит/тромбоз подкожных вен верхних конечностей",
+      "formulas": [],
+      "stac_card_ids": []
+    },
+    {
+      "id": "hit",
+      "name": "Гепарининдуцированная тромбоцитопения",
+      "formulas": [
+        "Event 33"
+      ],
+      "stac_card_ids": [
+        1391578491,
+        1407344272,
+        1395941116
+      ]
+    },
+    {
+      "id": "c_difficile",
+      "name": "Clostridium difficile positive stool",
+      "formulas": [
+        "Event 37"
+      ],
+      "stac_card_ids": []
+    },
+    {
+      "id": "aki",
+      "name": "ОПН",
+      "formulas": [
+        "Event 34"
+      ],
+      "stac_card_ids": [
+        1407067794,
+        1394651744
+      ]
+    },
+    {
+      "id": "drug_bleeding",
+      "name": "Кровотечения вследствие приема лекарственных препаратов",
+      "formulas": [],
+      "stac_card_ids": []
+    },
+    {
+      "id": "drug_hyperkalemia",
+      "name": "Гиперкалиемия как нежелательная лекарственная реакция",
+      "formulas": [
+        "Event 36"
+      ],
+      "stac_card_ids": [
+        1396133057
+      ]
+    },
+    {
+      "id": "drug_hypoglycemia",
+      "name": "Медикаментозно обусловленная гипогликемия",
+      "formulas": [
+        "Event 38"
+      ],
+      "stac_card_ids": []
+    },
+    {
+      "id": "anaphylaxis",
+      "name": "Анафилактический шок",
+      "formulas": [],
+      "stac_card_ids": []
+    },
+    {
+      "id": "allergic_other",
+      "name": "Другие аллергические реакции",
+      "formulas": [],
+      "stac_card_ids": []
+    },
+    {
+      "id": "urinary_retention_post_catheter",
+      "name": "Задержка мочи после катетеризации мочевого пузыря",
+      "formulas": [
+        "Event 59"
+      ],
+      "stac_card_ids": []
+    },
+    {
+      "id": "postop_mi",
+      "name": "ВБ-инфаркт миокарда (послеоперационный)",
+      "formulas": [],
+      "stac_card_ids": []
+    },
+    {
+      "id": "cardiac_arrest_or_acute_hf",
+      "name": "Остановка кровообращения / острая сердечная недостаточность",
+      "formulas": [],
+      "stac_card_ids": []
+    },
+    {
+      "id": "stroke_inhospital",
+      "name": "Внутрибольничный инсульт",
+      "formulas": [
+        "Event 51"
+      ],
+      "stac_card_ids": []
+    },
+    {
+      "id": "neuro_trauma",
+      "name": "Неврологическая травма",
+      "formulas": [],
+      "stac_card_ids": []
+    },
+    {
+      "id": "pressure_ulcer_2_4",
+      "name": "Пролежни 2–4 ст",
+      "formulas": [
+        "Event 55"
+      ],
+      "stac_card_ids": []
+    },
+    {
+      "id": "fall_no_injury",
+      "name": "Падения без травм",
+      "formulas": [
+        "Event 53"
+      ],
+      "stac_card_ids": []
+    },
+    {
+      "id": "fall_with_injury",
+      "name": "Падения с травмами",
+      "formulas": [
+        "Event 54"
+      ],
+      "stac_card_ids": []
+    }
+  ]
+}
