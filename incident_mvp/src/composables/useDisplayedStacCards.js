@@ -8,18 +8,9 @@ export function useDisplayedStacCards(allStacCards, currentCard, limit = 3) {
     return list.filter(c => String(c.amb_card_num) === String(current.amb_card_num))
   })
 
+  // ВАЖНО: больше не двигаем выбранную карту влево
   const displayedStacCards = computed(() => {
-    const current = unref(currentCard)
     const list = siblingCards.value.slice()
-
-    if (current?.id != null) {
-      const idx = list.findIndex(x => String(x.id) === String(current.id))
-      if (idx > 0) {
-        const [it] = list.splice(idx, 1)
-        list.unshift(it)
-      }
-    }
-
     return list.slice(0, limit)
   })
 

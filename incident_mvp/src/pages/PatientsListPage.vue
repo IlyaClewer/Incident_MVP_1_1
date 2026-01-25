@@ -22,11 +22,10 @@
           </option>
         </select>
 
-        <!-- Новый фильтр: мультивыбор диагнозов -->
         <DiagnosisDropdown
-            :diagnoses="availableDiagnoses ?? []"
-            v-model="selectedDiagnosisIds"
-          />
+          :diagnoses="availableDiagnoses"
+          v-model="selectedDiagnosisIds"
+        />
       </div>
 
       <div class="toolbar-right">
@@ -51,36 +50,33 @@ const store = usePatientsStore()
 
 const expertGroups = computed(() => store.expertGroups)
 
-// v-model для select группы (через action, чтобы сбрасывать диагнозы при смене группы)
 const selectedGroupId = computed({
   get: () => store.selectedExpertGroupId,
   set: (val) => store.setExpertGroup(val),
 })
 
-// диагнози, разрешённые для текущей группы (или все, если группа "Все")
-const availableDiagnoses = computed(() => {
-  const all = store.diagnoses ?? []
-  const gid = store.selectedExpertGroupId
+// список диагнозов для dropdown — уже учитывает выбранную эксперт-группу
+const availableDiagnoses = computed(() => store.availableDiagnosesForFilter ?? [])
 
-  if (!gid || gid === 'all') return all
-
-  const g = (store.expertGroups ?? []).find(x => x.id === gid)
-  const allowed = new Set(g?.diagnosis_ids ?? [])
-  return all.filter(d => allowed.has(d.id))
-})
-
-
-// v-model для мультивыбора диагнозов (компонент DiagnosisDropdown должен эмитить update:modelValue)
 const selectedDiagnosisIds = computed({
   get: () => store.selectedDiagnosisIds,
   set: (val) => store.setSelectedDiagnosisIds(val),
 })
 
-// важно: теперь это именно отфильтрованные стац-карты
 const patients = computed(() => store.filteredStacCards)
 
 function openStacCard(stacCardId) {
-  router.push({ name: 'patient', params: { id: String(stacCardId) } })
+  const g = store.selectedExpertGroupId
+  const dx = store.selectedDiagnosisIds?.[0] // открываем первым выбранный диагноз
+
+  router.push({
+    name: 'patient',
+    params: { id: String(stacCardId) },
+    query: {
+      ...(g ? { g } : {}),
+      ...(dx ? { dx } : {}),
+    },
+  })
 }
 </script>
 

@@ -16,10 +16,9 @@
           </div>
         </div>
       </div>
+
       <div class="cards-row">
-        <PatientSummaryCard
-          :card="card"
-        />
+        <PatientSummaryCard :card="card" />
 
         <StacCardsStrip
           :cards="displayedStacCards"
@@ -31,17 +30,16 @@
 
       <div class="events-panel">
         <EventsToolbar
-            :groups="expertGroups"
-            :active="activeExpertGroup"
-            @update:active="activeExpertGroup = $event"
-            :diagnoses="diagnosisTabs"
-            :active-diagnosis="activeDiagnosis"
-            @update:activeDiagnosis="activeDiagnosis = $event"
-          />
+          :groups="expertGroupsForToolbar"
+          :active="activeExpertGroupId"
+          @update:active="onSelectGroup"
+          :diagnoses="diagnosisTabTitles"
+          :active-diagnosis="activeDiagnosisTitle"
+          @update:activeDiagnosis="onSelectDiagnosisTitle"
+        />
 
-        <StacEventsTable :events="stacEvents" />
+        <StacEventsTable :events="displayedEvents" />
       </div>
-
 
       <p class="patient-hint">
         Здесь позже будет: события пациента, фильтры по стац. карте, вкладки экспертных групп.
@@ -51,9 +49,9 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { toRef } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { usePatientsStore } from '@/stores/patients'
 import { useDisplayedStacCards } from '@/composables/useDisplayedStacCards'
 
@@ -63,44 +61,174 @@ import StacCardsStrip from '@/components/patient-detail/StacCardsStrip.vue'
 import EventsToolbar from '@/components/patient-detail/EventsToolbar.vue'
 import StacEventsTable from '@/components/patient-detail/StacEventsTable.vue'
 
+const PROCHOE_ID = '__other__'
+const PROCHOE_TITLE = 'Прочее'
+
 const props = defineProps({
   id: { type: String, required: true },
 })
 
 const router = useRouter()
+const route = useRoute()
 const store = usePatientsStore()
 
 const card = computed(() => store.getById(props.id))
+const allCardEvents = computed(() => card.value?.events ?? [])
 
-// const mockEvents = computed(() => {
-//   if (!card.value) return []
-//   return Array.from({ length: 3 }, () => ({
-//     date_trigger: card.value.date_trigger ?? '—',
-//     trigger: card.value.trigger ?? '—',
-//   }))
-// })
-const stacEvents = computed(() => card.value?.events ?? [])
+const { displayedStacCards, placeholdersCount } = useDisplayedStacCards(
+  toRef(() => store.patients),
+  card,
+  3
+)
 
-const expertGroups = ['Эксп. группа A', 'Эксп. группа B', 'Эксп. группа C', 'Эксп. группа D', 'Эксп. группа E']
-const activeExpertGroup = ref(expertGroups[0])
+// ====== группы: только те, что применимы к карте ======
+const availableExpertGroupsForCard = computed(() => {
+  if (!card.value) return []
 
-const { displayedStacCards, placeholdersCount } = useDisplayedStacCards(toRef(() => store.patients), card, 3)
+  const cardDxIds = new Set(store.stacCardDiagnosisIndex?.[String(card.value.id)] ?? [])
+  if (cardDxIds.size === 0) return []
 
-const diagnosisTabs = [
-  'Диагноз A',
-  'Диагноз B',
-  'Диагноз C',
-  'Диагноз D',
-]
+  return (store.expertGroups ?? [])
+    .filter(g => g.id !== 'all')
+    .filter(g => (g.diagnosis_ids ?? []).some(dxId => cardDxIds.has(dxId)))
+})
 
-const activeDiagnosis = ref(diagnosisTabs[0])
+const expertGroupsForToolbar = computed(() => {
+  const list = availableExpertGroupsForCard.value.map(g => ({ id: g.id, title: g.title }))
+  return list.length ? list : [{ id: 'all', title: 'Без диагнозов' }]
+})
+
+const activeExpertGroupId = ref('all')
+
+// ====== диагнозы для текущей карты в текущей группе ======
+const cardDiagnosesInGroup = computed(() => {
+  if (!card.value) return []
+  return store.diagnosesForCardInGroup(card.value.id, activeExpertGroupId.value) ?? []
+})
+
+const diagnosisTabTitles = computed(() => {
+  const titles = cardDiagnosesInGroup.value.map(d => d.name)
+  titles.push(PROCHOE_TITLE)
+  return titles
+})
+
+const diagnosisIdByTitle = computed(() => {
+  const map = {}
+  for (const d of cardDiagnosesInGroup.value) map[d.name] = d.id
+  map[PROCHOE_TITLE] = PROCHOE_ID
+  return map
+})
+
+const activeDiagnosisTitle = ref(PROCHOE_TITLE)
+const activeDiagnosisId = computed(() => diagnosisIdByTitle.value[activeDiagnosisTitle.value] ?? PROCHOE_ID)
+
+// ====== события по диагнозу ======
+const eventsForDiagnosisId = computed(() => {
+  const dxId = activeDiagnosisId.value
+  if (!card.value) return []
+  if (dxId === PROCHOE_ID) return []
+
+  const required = new Set(store.dxEventIdsIndex?.[dxId] ?? [])
+  if (required.size === 0) return []
+
+  return allCardEvents.value.filter(ev => {
+    const ids = ev?.event_ids ?? []
+    return ids.some(x => required.has(Number(x)))
+  })
+})
+
+const otherEvents = computed(() => {
+  if (!card.value) return []
+
+  const coveredEventKeys = new Set()
+  for (const dx of cardDiagnosesInGroup.value) {
+    const required = new Set(store.dxEventIdsIndex?.[dx.id] ?? [])
+    if (required.size === 0) continue
+
+    for (const ev of allCardEvents.value) {
+      const ids = ev?.event_ids ?? []
+      if (ids.some(x => required.has(Number(x)))) {
+        coveredEventKeys.add(String(ev.id))
+      }
+    }
+  }
+
+  return allCardEvents.value.filter(ev => !coveredEventKeys.has(String(ev.id)))
+})
+
+const displayedEvents = computed(() => {
+  return activeDiagnosisId.value === PROCHOE_ID
+    ? otherEvents.value
+    : eventsForDiagnosisId.value
+})
+
+// ====== init из query ======
+function initFromQuery() {
+  const qg = route.query.g ? String(route.query.g) : null
+  const qdx = route.query.dx ? String(route.query.dx) : null
+
+  const availableIds = new Set(expertGroupsForToolbar.value.map(g => g.id))
+
+  activeExpertGroupId.value = (qg && availableIds.has(qg))
+    ? qg
+    : (expertGroupsForToolbar.value[0]?.id ?? 'all')
+
+  if (qdx) {
+    const found = cardDiagnosesInGroup.value.find(d => d.id === qdx)
+    activeDiagnosisTitle.value = found?.name ?? PROCHOE_TITLE
+  } else {
+    activeDiagnosisTitle.value = cardDiagnosesInGroup.value[0]?.name ?? PROCHOE_TITLE
+  }
+}
+
+watch(
+  () => [card.value?.id, store.expertGroups.length, store.diagnoses.length],
+  () => {
+    if (!card.value) return
+    initFromQuery()
+  },
+  { immediate: true }
+)
+
+function onSelectGroup(groupId) {
+  activeExpertGroupId.value = groupId
+  activeDiagnosisTitle.value = cardDiagnosesInGroup.value[0]?.name ?? PROCHOE_TITLE
+
+  router.replace({
+    query: {
+      ...route.query,
+      g: groupId,
+      dx: activeDiagnosisId.value === PROCHOE_ID ? undefined : activeDiagnosisId.value,
+    }
+  })
+}
+
+function onSelectDiagnosisTitle(title) {
+  activeDiagnosisTitle.value = title
+  const dxId = diagnosisIdByTitle.value[title]
+
+  router.replace({
+    query: {
+      ...route.query,
+      g: activeExpertGroupId.value,
+      dx: dxId === PROCHOE_ID ? undefined : dxId,
+    }
+  })
+}
 
 function goBack() {
   router.push({ name: 'patients' })
 }
 
 function openStacCard(stacCardId) {
-  router.push({ name: 'patient', params: { id: String(stacCardId) } })
+  router.push({
+    name: 'patient',
+    params: { id: String(stacCardId) },
+    query: {
+      g: activeExpertGroupId.value,
+      dx: activeDiagnosisId.value === PROCHOE_ID ? undefined : activeDiagnosisId.value,
+    },
+  })
 }
 </script>
 
@@ -133,12 +261,11 @@ function openStacCard(stacCardId) {
   font-size: 12.5px;
 }
 
-/* “таблица” в одну строку */
 .cards-row {
   display: grid;
   grid-template-columns: 460px 1fr;
   align-items: start;
-  gap: 60px;            /* было 25px */
+  gap: 60px;
   margin: 10px 0 55px 0;
 }
 
@@ -160,11 +287,9 @@ function openStacCard(stacCardId) {
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.85);
   box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
-  overflow: hidden; /* чтобы углы таблицы/шапки были “одним блоком” */
+  overflow: hidden;
 }
 .events-panel :deep(.events-table thead) {
   position: static;
 }
-
 </style>
-

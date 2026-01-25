@@ -16,6 +16,28 @@ function flattenToStacCards(data) {
   )
 }
 
+function extractEventIdsFromFormulas(formulas) {
+  const out = new Set()
+  for (const f of (formulas ?? [])) {
+    const nums = String(f).match(/\d+/g) ?? []
+    for (const n of nums) out.add(Number(n))
+  }
+  return [...out]
+}
+
+function buildStacCardDiagnosisIndexFromDiagnoses(diagnoses) {
+  const idx = {}
+  for (const dx of (diagnoses ?? [])) {
+    const dxId = dx?.id
+    if (!dxId) continue
+    for (const cardId of (dx?.stac_card_ids ?? [])) {
+      const key = String(cardId)
+      ;(idx[key] ||= []).push(dxId)
+    }
+  }
+  return idx
+}
+
 export const usePatientsStore = defineStore('patients', {
   state: () => ({
     patients: [], // плоский список стац-карт
@@ -26,7 +48,10 @@ export const usePatientsStore = defineStore('patients', {
     diagnoses: [],
     stacCardDiagnosisIndex: {}, // { [stac_card_id]: [diagnosis_id,...] }
 
-    // filters
+    // derived meta:
+    dxEventIdsIndex: {}, // { [diagnosis_id]: number[] } из formulas
+
+    // filters list page:
     selectedExpertGroupId: null,
     selectedDiagnosisIds: [], // мультивыбор диагнозов
   }),
@@ -35,27 +60,53 @@ export const usePatientsStore = defineStore('patients', {
     getById: (state) => (id) =>
       state.patients.find(p => String(p.id) === String(id)),
 
-    // Диагнозы, которые показываем в дропдауне (зависит от выбранной группы)
-    availableDiagnosesForFilter: (state) => {
-      // "Все" (или null) => показываем все диагнозы
-      if (!state.selectedExpertGroupId || state.selectedExpertGroupId === 'all') {
-        return state.diagnoses ?? []
-      }
+    diagnosisById: (state) => (id) =>
+      (state.diagnoses ?? []).find(d => String(d.id) === String(id)),
 
+    // Диагнозы для dropdown на list page (по группе)
+    availableDiagnosesForFilter: (state) => {
+      if (!state.selectedExpertGroupId || state.selectedExpertGroupId === 'all') {
+        return state.filteredDiagnosesNonEmpty
+      }
       const g = (state.expertGroups ?? []).find(x => x.id === state.selectedExpertGroupId)
       const allowed = new Set(g?.diagnosis_ids ?? [])
-      return (state.diagnoses ?? []).filter(d => allowed.has(d.id))
+      return (state.filteredDiagnosesNonEmpty ?? []).filter(d => allowed.has(d.id))
+    },
+
+    // Только диагнозы, у которых реально есть хоть одна стац-карта (иначе вкладки будут пустые)
+    filteredDiagnosesNonEmpty: (state) => {
+      return (state.diagnoses ?? []).filter(d => (d?.stac_card_ids?.length ?? 0) > 0)
+    },
+
+    // Для patient page: диагнозы этой эксперт-группы (и только “непустые”)
+    diagnosesForGroup: (state) => (groupId) => {
+      if (!groupId || groupId === 'all') return state.filteredDiagnosesNonEmpty ?? []
+      const g = (state.expertGroups ?? []).find(x => x.id === groupId)
+      const allowed = new Set(g?.diagnosis_ids ?? [])
+      return (state.filteredDiagnosesNonEmpty ?? []).filter(d => allowed.has(d.id))
+    },
+
+    // Для patient page: диагнозы выбранной группы, которые закреплены за конкретной стац-картой
+    diagnosesForCardInGroup: (state) => (stacCardId, groupId) => {
+      const dxIds = state.stacCardDiagnosisIndex?.[String(stacCardId)] ?? []
+      if (!groupId || groupId === 'all') {
+        const set = new Set(dxIds)
+        return (state.filteredDiagnosesNonEmpty ?? []).filter(d => set.has(d.id))
+      }
+      const g = (state.expertGroups ?? []).find(x => x.id === groupId)
+      const allowed = new Set(g?.diagnosis_ids ?? [])
+      const set = new Set(dxIds.filter(id => allowed.has(id)))
+      return (state.filteredDiagnosesNonEmpty ?? []).filter(d => set.has(d.id))
     },
 
     filteredStacCards: (state) => {
-      // 0) базовый фильтр: берём только карты с событиями
+      // базово: показываем карты, у которых есть события
       let cards = state.patients.filter(c => (c.events?.length ?? 0) > 0)
 
       // 1) фильтр по экспертной группе
       if (state.selectedExpertGroupId && state.selectedExpertGroupId !== 'all') {
         const g = state.expertGroups.find(x => x.id === state.selectedExpertGroupId)
         const groupDxIds = new Set(g?.diagnosis_ids ?? [])
-
         if (groupDxIds.size === 0) return []
 
         cards = cards.filter(card => {
@@ -107,9 +158,22 @@ export const usePatientsStore = defineStore('patients', {
           ...(meta.expert_groups ?? []),
         ]
         this.diagnoses = meta.diagnoses ?? []
-        this.stacCardDiagnosisIndex = meta.stac_card_diagnosis_index ?? {}
 
-        // дефолт: первая группа (как у тебя было)
+        // 1) event ids по диагнозу (для фильтрации событий в пациенте)
+        const dxEventIdsIndex = {}
+        for (const dx of (this.diagnoses ?? [])) {
+          if (!dx?.id) continue
+          dxEventIdsIndex[dx.id] = extractEventIdsFromFormulas(dx.formulas)
+        }
+        this.dxEventIdsIndex = dxEventIdsIndex
+
+        // 2) stacCardDiagnosisIndex: либо из бэка, либо строим из diagnoses[].stac_card_ids
+        const backendIdx = meta.stac_card_diagnosis_index
+        this.stacCardDiagnosisIndex =
+          (backendIdx && Object.keys(backendIdx).length > 0)
+            ? backendIdx
+            : buildStacCardDiagnosisIndexFromDiagnoses(this.diagnoses)
+
         if (!this.selectedExpertGroupId && this.expertGroups.length > 0) {
           this.selectedExpertGroupId = this.expertGroups[0].id
         }
@@ -120,7 +184,6 @@ export const usePatientsStore = defineStore('patients', {
 
     setExpertGroup(id) {
       this.selectedExpertGroupId = id
-      // сброс выбранных диагнозов при смене группы
       this.selectedDiagnosisIds = []
     },
 
