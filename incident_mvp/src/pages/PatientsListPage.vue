@@ -13,18 +13,20 @@
       <div class="toolbar-left toolbar-left--home">
         <span id="visible-count">{{ patients.length }}</span> записей
 
-        <select class="expert-group-select">
-          <option selected>Экспертная группа A</option>
-          <option>Экспертная группа B</option>
-          <option>Экспертная группа C</option>
-          <option>Экспертная группа D</option>
-          <option>Экспертная группа E</option>
-          <option>Экспертная группа F</option>
-          <option>Экспертная группа G</option>
-          <option>Экспертная группа H</option>
-          <option>Экспертная группа I</option>
-          <option>Экспертная группа J</option>
+        <select
+          class="expert-group-select"
+          v-model="selectedGroupId"
+        >
+          <option v-for="g in expertGroups" :key="g.id" :value="g.id">
+            {{ g.title }}
+          </option>
         </select>
+
+        <!-- Новый фильтр: мультивыбор диагнозов -->
+        <DiagnosisDropdown
+            :diagnoses="availableDiagnoses ?? []"
+            v-model="selectedDiagnosisIds"
+          />
       </div>
 
       <div class="toolbar-right">
@@ -40,12 +42,42 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePatientsStore } from '@/stores/patients'
+
 import PatientTable from '@/components/patients/PatientTable.vue'
+import DiagnosisDropdown from '@/components/filters/DiagnosisDropdown.vue'
 
 const router = useRouter()
 const store = usePatientsStore()
 
-const patients = computed(() => store.patientsWithEvents)
+const expertGroups = computed(() => store.expertGroups)
+
+// v-model для select группы (через action, чтобы сбрасывать диагнозы при смене группы)
+const selectedGroupId = computed({
+  get: () => store.selectedExpertGroupId,
+  set: (val) => store.setExpertGroup(val),
+})
+
+// диагнози, разрешённые для текущей группы (или все, если группа "Все")
+const availableDiagnoses = computed(() => {
+  const all = store.diagnoses ?? []
+  const gid = store.selectedExpertGroupId
+
+  if (!gid || gid === 'all') return all
+
+  const g = (store.expertGroups ?? []).find(x => x.id === gid)
+  const allowed = new Set(g?.diagnosis_ids ?? [])
+  return all.filter(d => allowed.has(d.id))
+})
+
+
+// v-model для мультивыбора диагнозов (компонент DiagnosisDropdown должен эмитить update:modelValue)
+const selectedDiagnosisIds = computed({
+  get: () => store.selectedDiagnosisIds,
+  set: (val) => store.setSelectedDiagnosisIds(val),
+})
+
+// важно: теперь это именно отфильтрованные стац-карты
+const patients = computed(() => store.filteredStacCards)
 
 function openStacCard(stacCardId) {
   router.push({ name: 'patient', params: { id: String(stacCardId) } })
@@ -57,6 +89,7 @@ function openStacCard(stacCardId) {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .expert-group-select {
