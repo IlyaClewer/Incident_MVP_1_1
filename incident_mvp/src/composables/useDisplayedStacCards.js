@@ -4,14 +4,33 @@ export function useDisplayedStacCards(allStacCards, currentCard, limit = 3) {
   const siblingCards = computed(() => {
     const list = unref(allStacCards) ?? []
     const current = unref(currentCard)
-    if (!current?.amb_card_num) return []
-    return list.filter(c => String(c.amb_card_num) === String(current.amb_card_num))
+
+    if (!current?.amb_card_num) {
+      return []
+    }
+
+    return list.filter(
+      (card) => String(card.amb_card_num) === String(current.amb_card_num)
+    )
   })
 
-  // ВАЖНО: больше не двигаем выбранную карту влево
   const displayedStacCards = computed(() => {
     const list = siblingCards.value.slice()
-    return list.slice(0, limit)
+    const current = unref(currentCard)
+
+    if (list.length <= limit) {
+      return list
+    }
+
+    const currentIndex = list.findIndex(
+      (card) => String(card.id) === String(current?.id)
+    )
+
+    if (currentIndex === -1 || currentIndex < limit) {
+      return list.slice(0, limit)
+    }
+
+    return [...list.slice(0, limit - 1), list[currentIndex]]
   })
 
   const placeholdersCount = computed(() => {

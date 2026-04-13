@@ -9,7 +9,7 @@
 
     <div class="info-row">
       <div class="info-key">Дата рождения</div>
-      <div class="info-val">{{ card.birthDate ?? '—' }}</div>
+      <div class="info-val">{{ formatDate(card.birthDate) }}</div>
     </div>
 
     <div class="info-row info-row--last">
@@ -20,10 +20,11 @@
 </template>
 
 <script setup>
+import { formatDate } from '@/utils/dateFormatter'
+
 defineProps({
   card: { type: Object, required: true },
 })
-
 </script>
 
 <style scoped>

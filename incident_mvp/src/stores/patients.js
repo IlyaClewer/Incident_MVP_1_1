@@ -1,184 +1,656 @@
-// src/stores/patients.js
 import { defineStore } from 'pinia'
 
-// helper: делает из нового JSON плоский список стац-карт
-function flattenToStacCards(data) {
-  const patientsArr = Array.isArray(data) ? data : (data?.patients ?? [])
+import { api } from '@/utils/api'
+import { toDateInputValue } from '@/utils/dateFormatter'
+import { getBestRecordMatch } from '@/utils/fuzzySearch'
 
-  return patientsArr.flatMap(p =>
-    (p.stac_cards ?? []).map(c => ({
-      ...c,
-      amb_card_num: c.amb_card_num ?? p.amb_card_num,
-      patientName: c.patientName ?? p.patientName,
-      birthDate: c.birthDate ?? p.birthDate,
-      patient_birthday: c.patient_birthday ?? p.birthDate,
+const DEFAULT_PATIENT_FILTERS = () => ({
+  ambCard: '',
+  patientName: '',
+  birthDate: '',
+  departments: [],
+})
+
+const DEFAULT_STAC_FILTERS = () => ({
+  departmentValues: [],
+  dateHosp: '',
+  dateOperation: '',
+  dateDischarge: '',
+  statuses: [],
+})
+
+const STATUS_OPTIONS = [
+  { value: 'new', label: 'Новый' },
+  { value: 'confirmed', label: 'Подтвержден' },
+  { value: 'rejected', label: 'Отклонен' },
+]
+
+function formatStatusLabel(status) {
+  switch (normalizeStatus(status)) {
+    case 'confirmed':
+      return 'Подтвержден'
+    case 'rejected':
+      return 'Отклонен'
+    default:
+      return 'Новый'
+  }
+}
+
+function normalizeStatus(status) {
+  switch (String(status ?? '').toLowerCase()) {
+    case 'confirmed':
+    case 'approved':
+    case 'accepted':
+      return 'confirmed'
+    case 'rejected':
+      return 'rejected'
+    default:
+      return 'new'
+  }
+}
+
+function diagnosisStateKey(stacCardId, expertGroupId, diagnosisId) {
+  return `${stacCardId}:${expertGroupId}:${diagnosisId}`
+}
+
+function flattenPatients(patients) {
+  return (patients ?? []).flatMap((patient) =>
+    (patient.stac_cards ?? []).map((card) => ({
+      ...card,
+      amb_card_num: card.amb_card_num ?? patient.amb_card_num ?? null,
+      patientName: patient.patientName ?? null,
+      birthDate: patient.birthDate ?? null,
     }))
   )
 }
 
-function extractEventIdsFromFormulas(formulas) {
-  const out = new Set()
-  for (const f of (formulas ?? [])) {
-    const nums = String(f).match(/\d+/g) ?? []
-    for (const n of nums) out.add(Number(n))
+function buildDiagnosisStateIndex(diagnosisStates) {
+  const index = {}
+
+  for (const item of diagnosisStates ?? []) {
+    index[
+      diagnosisStateKey(item.stac_card_id, item.expert_group_id, item.diagnosis_id)
+    ] = item
   }
-  return [...out]
+
+  return index
 }
 
-function buildStacCardDiagnosisIndexFromDiagnoses(diagnoses) {
-  const idx = {}
-  for (const dx of (diagnoses ?? [])) {
-    const dxId = dx?.id
-    if (!dxId) continue
-    for (const cardId of (dx?.stac_card_ids ?? [])) {
-      const key = String(cardId)
-      ;(idx[key] ||= []).push(dxId)
-    }
+function buildStacCardDiagnosisIndex(diagnosisStates, fallbackIndex) {
+  const index = {}
+
+  for (const item of diagnosisStates ?? []) {
+    const key = String(item.stac_card_id)
+    ;(index[key] ||= new Set()).add(item.diagnosis_id)
   }
-  return idx
+
+  if (Object.keys(index).length > 0) {
+    return Object.fromEntries(
+      Object.entries(index).map(([key, value]) => [
+        key,
+        [...value].sort((left, right) => left - right),
+      ])
+    )
+  }
+
+  return Object.fromEntries(
+    Object.entries(fallbackIndex ?? {}).map(([key, value]) => [
+      String(key),
+      [...new Set(value ?? [])].sort((left, right) => left - right),
+    ])
+  )
+}
+
+function collectDiagnosisCardIds(diagnosisId, diagnosisStates) {
+  return [
+    ...new Set(
+      (diagnosisStates ?? [])
+        .filter((item) => String(item.diagnosis_id) === String(diagnosisId))
+        .map((item) => item.stac_card_id)
+    ),
+  ].sort((left, right) => left - right)
+}
+
+function normalizeDiagnosisState(item) {
+  return {
+    id: Number(item.id),
+    stac_card_id: Number(item.stac_card_id),
+    diagnosis_id: Number(item.diagnosis_id),
+    expert_group_id: Number(item.expert_group_id),
+    status: normalizeStatus(item.status),
+  }
+}
+
+function aggregateCardStatus(cardId, diagnosisStates, fallbackStatus = 'new') {
+  const statuses = new Set(
+    (diagnosisStates ?? [])
+      .filter((item) => String(item.stac_card_id) === String(cardId))
+      .map((item) => normalizeStatus(item.status))
+  )
+
+  if (statuses.has('new')) return 'new'
+  if (statuses.has('rejected')) return 'rejected'
+  if (statuses.has('confirmed')) return 'confirmed'
+
+  return normalizeStatus(fallbackStatus)
+}
+
+function syncCardStatuses(cards, diagnosisStates) {
+  return (cards ?? []).map((card) => ({
+    ...card,
+    status: aggregateCardStatus(card.id, diagnosisStates, card.status),
+  }))
+}
+
+function normalizeText(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replaceAll('ё', 'е')
+}
+
+function normalizeDepartmentValue(value) {
+  const normalized = String(value ?? '').trim()
+  return normalized || '—'
+}
+
+function sortNaturally(values) {
+  return [...values].sort((left, right) =>
+    String(left).localeCompare(String(right), 'ru', {
+      numeric: true,
+      sensitivity: 'base',
+    })
+  )
+}
+
+function matchesTextFilter(value, filterValue) {
+  if (!filterValue) {
+    return true
+  }
+
+  return normalizeText(value).includes(normalizeText(filterValue))
+}
+
+function matchesDateFilter(value, filterValue) {
+  if (!filterValue) {
+    return true
+  }
+
+  return toDateInputValue(value) === filterValue
+}
+
+function getCardsByAmb(cards) {
+  return (cards ?? []).reduce((accumulator, card) => {
+    const key = String(card.amb_card_num ?? `UNKNOWN-${card.id}`)
+    ;(accumulator[key] ||= []).push(card)
+    return accumulator
+  }, {})
+}
+
+function getDepartmentsFromCards(cards) {
+  const uniqueDepartments = new Set(
+    (cards ?? [])
+      .map((card) => normalizeDepartmentValue(card.department))
+      .filter((value) => value !== '—')
+  )
+
+  return sortNaturally([...uniqueDepartments])
+}
+
+function patientMatchesFilters(entry, filters) {
+  const selectedDepartments = new Set(filters.departments ?? [])
+
+  if (!matchesTextFilter(entry.row.amb_card_num, filters.ambCard)) {
+    return false
+  }
+
+  if (!matchesTextFilter(entry.row.patientName, filters.patientName)) {
+    return false
+  }
+
+  if (!matchesDateFilter(entry.row.birthDate, filters.birthDate)) {
+    return false
+  }
+
+  if (!selectedDepartments.size) {
+    return true
+  }
+
+  return entry.row.departments.some((department) => selectedDepartments.has(department))
+}
+
+function stacCardMatchesFilters(card, filters) {
+  const selectedDepartments = new Set(filters.departmentValues ?? [])
+  const selectedStatuses = new Set(filters.statuses ?? [])
+
+  if (selectedDepartments.size && !selectedDepartments.has(normalizeDepartmentValue(card.department))) {
+    return false
+  }
+
+  if (selectedStatuses.size && !selectedStatuses.has(normalizeStatus(card.status))) {
+    return false
+  }
+
+  if (!matchesDateFilter(card.date_hosp, filters.dateHosp)) {
+    return false
+  }
+
+  if (!matchesDateFilter(card.date_operation, filters.dateOperation)) {
+    return false
+  }
+
+  if (!matchesDateFilter(card.date_discharge, filters.dateDischarge)) {
+    return false
+  }
+
+  return true
+}
+
+function getPatientSearchTexts(entry) {
+  return [
+    entry.row.amb_card_num,
+    entry.row.patientName,
+    entry.row.birthDate,
+    entry.row.departmentDisplay,
+  ]
+}
+
+function getCardSearchTexts(card) {
+  return [
+    card.cardNumber,
+    normalizeDepartmentValue(card.department),
+    normalizeStatus(card.status),
+    formatStatusLabel(card.status),
+    card.date_hosp,
+    card.date_operation,
+    card.date_discharge,
+  ]
+}
+
+function enhanceEntriesWithSearch(query, entries) {
+  const normalizedQuery = String(query ?? '').trim()
+  if (!normalizedQuery) {
+    return entries
+  }
+
+  return entries
+    .map((entry, entryIndex) => {
+      const patientMatch = getBestRecordMatch(normalizedQuery, getPatientSearchTexts(entry))
+      const cardScores = entry.cards.map((card, cardIndex) => ({
+        card,
+        score: getBestRecordMatch(normalizedQuery, [
+          ...getCardSearchTexts(card),
+          entry.row.patientName,
+          entry.row.amb_card_num,
+        ]).score,
+        order: cardIndex,
+      }))
+
+      const matchingCards =
+        patientMatch.score > 0
+          ? cardScores
+          : cardScores.filter((item) => item.score > 0)
+
+      if (!matchingCards.length && patientMatch.score <= 0) {
+        return null
+      }
+
+      const sortedCards = matchingCards
+        .sort(
+          (left, right) =>
+            right.score - left.score ||
+            left.order - right.order
+        )
+        .map((item) => item.card)
+
+      const topCardScore = matchingCards[0]?.score ?? 0
+      const searchScore = Math.max(patientMatch.score, topCardScore)
+
+      return {
+        ...entry,
+        cards: sortedCards,
+        searchScore,
+        order: entryIndex,
+      }
+    })
+    .filter(Boolean)
+    .sort(
+      (left, right) =>
+        right.searchScore - left.searchScore ||
+        left.order - right.order
+    )
 }
 
 export const usePatientsStore = defineStore('patients', {
   state: () => ({
-    patients: [], // плоский список стац-карт
-    isLoading: false,
-
-    // meta:
+    patients: [],
+    stacCards: [],
     expertGroups: [],
     diagnoses: [],
-    stacCardDiagnosisIndex: {}, // { [stac_card_id]: [diagnosis_id,...] }
-
-    // derived meta:
-    dxEventIdsIndex: {}, // { [diagnosis_id]: number[] } из formulas
-
-    // filters list page:
-    selectedExpertGroupId: null,
-    selectedDiagnosisIds: [], // мультивыбор диагнозов
+    diagnosisStates: [],
+    diagnosisStateIndex: {},
+    stacCardDiagnosisIndex: {},
+    eventsByCardId: {},
+    eventsLoadingByCardId: {},
+    selectedExpertGroupId: 'all',
+    selectedDiagnosisIds: [],
+    searchQuery: '',
+    patientFilters: DEFAULT_PATIENT_FILTERS(),
+    stacFilters: DEFAULT_STAC_FILTERS(),
+    isBootstrapping: false,
+    isLoadingPatients: false,
+    isLoadingMeta: false,
+    isUpdatingDiagnosisState: false,
+    bootstrapError: '',
   }),
 
   getters: {
-    getById: (state) => (id) =>
-      state.patients.find(p => String(p.id) === String(id)),
+    getStacCardById: (state) => (id) =>
+      state.stacCards.find((card) => String(card.id) === String(id)),
 
-    diagnosisById: (state) => (id) =>
-      (state.diagnoses ?? []).find(d => String(d.id) === String(id)),
+    getEventsForCard: (state) => (id) =>
+      state.eventsByCardId[String(id)] ?? [],
 
-    // Диагнозы для dropdown на list page (по группе)
-    availableDiagnosesForFilter: (state) => {
-      if (!state.selectedExpertGroupId || state.selectedExpertGroupId === 'all') {
-        return state.filteredDiagnosesNonEmpty
+    getDiagnosisState: (state) => (stacCardId, groupId, diagnosisId) =>
+      state.diagnosisStateIndex[
+        diagnosisStateKey(stacCardId, groupId, diagnosisId)
+      ] ?? null,
+
+    filteredDiagnosesNonEmpty(state) {
+      return (state.diagnoses ?? []).filter(
+        (diagnosis) => (diagnosis?.stac_card_ids?.length ?? 0) > 0
+      )
+    },
+
+    availableDiagnosesForFilter() {
+      if (!this.selectedExpertGroupId || this.selectedExpertGroupId === 'all') {
+        return this.filteredDiagnosesNonEmpty
       }
-      const g = (state.expertGroups ?? []).find(x => x.id === state.selectedExpertGroupId)
-      const allowed = new Set(g?.diagnosis_ids ?? [])
-      return (state.filteredDiagnosesNonEmpty ?? []).filter(d => allowed.has(d.id))
+
+      const group = (this.expertGroups ?? []).find(
+        (item) => String(item.id) === String(this.selectedExpertGroupId)
+      )
+      const allowed = new Set(group?.diagnosis_ids ?? [])
+
+      return this.filteredDiagnosesNonEmpty.filter((diagnosis) =>
+        allowed.has(diagnosis.id)
+      )
     },
 
-    // Только диагнозы, у которых реально есть хоть одна стац-карта (иначе вкладки будут пустые)
-    filteredDiagnosesNonEmpty: (state) => {
-      return (state.diagnoses ?? []).filter(d => (d?.stac_card_ids?.length ?? 0) > 0)
+    patientDepartmentOptions(state) {
+      const values = new Set(
+        (state.stacCards ?? [])
+          .map((card) => normalizeDepartmentValue(card.department))
+          .filter((value) => value !== '—')
+      )
+
+      return sortNaturally([...values])
     },
 
-    // Для patient page: диагнозы этой эксперт-группы (и только “непустые”)
-    diagnosesForGroup: (state) => (groupId) => {
-      if (!groupId || groupId === 'all') return state.filteredDiagnosesNonEmpty ?? []
-      const g = (state.expertGroups ?? []).find(x => x.id === groupId)
-      const allowed = new Set(g?.diagnosis_ids ?? [])
-      return (state.filteredDiagnosesNonEmpty ?? []).filter(d => allowed.has(d.id))
+    stacDepartmentOptions() {
+      return this.patientDepartmentOptions
     },
 
-    // Для patient page: диагнозы выбранной группы, которые закреплены за конкретной стац-картой
-    diagnosesForCardInGroup: (state) => (stacCardId, groupId) => {
-      const dxIds = state.stacCardDiagnosisIndex?.[String(stacCardId)] ?? []
-      if (!groupId || groupId === 'all') {
-        const set = new Set(dxIds)
-        return (state.filteredDiagnosesNonEmpty ?? []).filter(d => set.has(d.id))
-      }
-      const g = (state.expertGroups ?? []).find(x => x.id === groupId)
-      const allowed = new Set(g?.diagnosis_ids ?? [])
-      const set = new Set(dxIds.filter(id => allowed.has(id)))
-      return (state.filteredDiagnosesNonEmpty ?? []).filter(d => set.has(d.id))
+    stacStatusOptions(state) {
+      const presentStatuses = new Set(
+        (state.stacCards ?? []).map((card) => normalizeStatus(card.status))
+      )
+
+      return STATUS_OPTIONS.filter(
+        (option) => !presentStatuses.size || presentStatuses.has(option.value)
+      )
     },
 
-    filteredStacCards: (state) => {
-      // базово: показываем карты, у которых есть события
-      let cards = state.patients.filter(c => (c.events?.length ?? 0) > 0)
+    diagnosisFilteredStacCards(state) {
+      let cards = state.stacCards.filter(
+        (card) => (state.stacCardDiagnosisIndex[String(card.id)] ?? []).length > 0
+      )
 
-      // 1) фильтр по экспертной группе
       if (state.selectedExpertGroupId && state.selectedExpertGroupId !== 'all') {
-        const g = state.expertGroups.find(x => x.id === state.selectedExpertGroupId)
-        const groupDxIds = new Set(g?.diagnosis_ids ?? [])
-        if (groupDxIds.size === 0) return []
-
-        cards = cards.filter(card => {
-          const dxIds = state.stacCardDiagnosisIndex[String(card.id)] ?? []
-          return dxIds.some(d => groupDxIds.has(d))
-        })
+        cards = cards.filter((card) =>
+          state.diagnosisStates.some(
+            (item) =>
+              String(item.stac_card_id) === String(card.id) &&
+              String(item.expert_group_id) === String(state.selectedExpertGroupId)
+          )
+        )
       }
 
-      // 2) фильтр по выбранным диагнозам (мультивыбор)
       if (state.selectedDiagnosisIds.length > 0) {
-        const selected = new Set(state.selectedDiagnosisIds)
-        cards = cards.filter(card => {
-          const dxIds = state.stacCardDiagnosisIndex[String(card.id)] ?? []
-          return dxIds.some(d => selected.has(d))
-        })
+        const selected = new Set(state.selectedDiagnosisIds.map(Number))
+        cards = cards.filter((card) =>
+          (state.stacCardDiagnosisIndex[String(card.id)] ?? []).some((diagnosisId) =>
+            selected.has(Number(diagnosisId))
+          )
+        )
       }
 
       return cards
     },
+
+    filteredTableEntries() {
+      const diagnosisFilteredCardsByAmb = getCardsByAmb(this.diagnosisFilteredStacCards)
+
+      const patientLevelEntries = (this.patients ?? [])
+        .map((patient, patientIndex) => {
+          const ambKey = String(
+            patient.amb_card_num ??
+              patient.stac_cards?.[0]?.amb_card_num ??
+              `UNKNOWN-${patientIndex}`
+          )
+          const baseCards = diagnosisFilteredCardsByAmb[ambKey] ?? []
+          if (!baseCards.length) {
+            return null
+          }
+
+          const departments = getDepartmentsFromCards(baseCards)
+
+          return {
+            row: {
+              key: ambKey,
+              amb_card_num: patient.amb_card_num ?? '—',
+              patientName: patient.patientName ?? '—',
+              birthDate: patient.birthDate ?? '',
+              departments,
+              departmentDisplay: departments.join(', ') || '—',
+            },
+            cards: baseCards,
+          }
+        })
+        .filter(Boolean)
+        .filter((entry) => patientMatchesFilters(entry, this.patientFilters))
+
+      const stacLevelEntries = patientLevelEntries
+        .map((entry) => ({
+          ...entry,
+          cards: entry.cards.filter((card) => stacCardMatchesFilters(card, this.stacFilters)),
+        }))
+        .filter((entry) => entry.cards.length > 0)
+
+      return enhanceEntriesWithSearch(this.searchQuery, stacLevelEntries)
+    },
+
+    filteredStacCards() {
+      return this.filteredTableEntries.flatMap((entry) => entry.cards)
+    },
+
+    stacCardsByAmb() {
+      return Object.fromEntries(
+        this.filteredTableEntries.map((entry) => [entry.row.key, entry.cards])
+      )
+    },
+
+    filteredPatientRows() {
+      return this.filteredTableEntries.map((entry) => entry.row)
+    },
+
+    diagnosesForCardInGroup: (state) => (stacCardId, groupId) => {
+      const relevantStates = (state.diagnosisStates ?? [])
+        .filter(
+          (item) =>
+            String(item.stac_card_id) === String(stacCardId) &&
+            (groupId === 'all' || String(item.expert_group_id) === String(groupId))
+        )
+        .sort((left, right) => left.diagnosis_id - right.diagnosis_id)
+
+      return relevantStates
+        .map((item) => {
+          const diagnosis = (state.diagnoses ?? []).find(
+            (entry) => String(entry.id) === String(item.diagnosis_id)
+          )
+
+          if (!diagnosis) {
+            return null
+          }
+
+          return {
+            ...diagnosis,
+            diagnosisStateId: item.id,
+            status: item.status,
+            expert_group_id: item.expert_group_id,
+          }
+        })
+        .filter(Boolean)
+    },
   },
 
   actions: {
-    async fetchPatients() {
-      if (this.isLoading) return
-      this.isLoading = true
+    async bootstrap() {
+      if (this.isBootstrapping) {
+        return
+      }
+
+      this.isBootstrapping = true
+      this.bootstrapError = ''
 
       try {
-        const res = await fetch('/api/patients')
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-
-        const data = await res.json()
-        this.patients = flattenToStacCards(data)
-        console.log('✅ Загружено стац-карт:', this.patients.length)
+        await Promise.all([this.fetchPatients(), this.fetchMeta()])
       } catch (error) {
-        console.error('❌ Ошибка загрузки:', error)
+        this.bootstrapError =
+          error instanceof Error ? error.message : 'Не удалось загрузить данные'
+        throw error
       } finally {
-        this.isLoading = false
+        this.isBootstrapping = false
+      }
+    },
+
+    async fetchPatients() {
+      if (this.isLoadingPatients) {
+        return
+      }
+
+      this.isLoadingPatients = true
+
+      try {
+        const payload = await api.getPatients()
+        this.patients = payload?.patients ?? []
+        this.stacCards = syncCardStatuses(
+          flattenPatients(this.patients),
+          this.diagnosisStates
+        )
+      } finally {
+        this.isLoadingPatients = false
       }
     },
 
     async fetchMeta() {
+      if (this.isLoadingMeta) {
+        return
+      }
+
+      this.isLoadingMeta = true
+
       try {
-        const res = await fetch('/api/meta')
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        const meta = await res.json()
+        const meta = await api.getMeta()
+        const diagnosisStates = (meta?.diagnosis_states ?? []).map(normalizeDiagnosisState)
 
         this.expertGroups = [
           { id: 'all', title: 'Все', diagnosis_ids: [] },
-          ...(meta.expert_groups ?? []),
+          ...(meta?.expert_groups ?? []),
         ]
-        this.diagnoses = meta.diagnoses ?? []
+        this.diagnosisStates = diagnosisStates
+        this.diagnosisStateIndex = buildDiagnosisStateIndex(diagnosisStates)
+        this.stacCardDiagnosisIndex = buildStacCardDiagnosisIndex(
+          diagnosisStates,
+          meta?.stac_card_diagnosis_index
+        )
+        this.diagnoses = (meta?.diagnoses ?? []).map((diagnosis) => ({
+          ...diagnosis,
+          stac_card_ids:
+            (diagnosis?.stac_card_ids?.length ?? 0) > 0
+              ? diagnosis.stac_card_ids
+              : collectDiagnosisCardIds(diagnosis.id, diagnosisStates),
+          event_type_ids: diagnosis?.event_type_ids ?? [],
+          formulas: diagnosis?.formulas ?? [],
+        }))
+        this.stacCards = syncCardStatuses(this.stacCards, diagnosisStates)
 
-        // 1) event ids по диагнозу (для фильтрации событий в пациенте)
-        const dxEventIdsIndex = {}
-        for (const dx of (this.diagnoses ?? [])) {
-          if (!dx?.id) continue
-          dxEventIdsIndex[dx.id] = extractEventIdsFromFormulas(dx.formulas)
+        if (!this.selectedExpertGroupId) {
+          this.selectedExpertGroupId = 'all'
         }
-        this.dxEventIdsIndex = dxEventIdsIndex
+      } finally {
+        this.isLoadingMeta = false
+      }
+    },
 
-        // 2) stacCardDiagnosisIndex: либо из бэка, либо строим из diagnoses[].stac_card_ids
-        const backendIdx = meta.stac_card_diagnosis_index
-        this.stacCardDiagnosisIndex =
-          (backendIdx && Object.keys(backendIdx).length > 0)
-            ? backendIdx
-            : buildStacCardDiagnosisIndexFromDiagnoses(this.diagnoses)
+    async fetchEventsForCard(stacCardId, force = false) {
+      const key = String(stacCardId)
 
-        if (!this.selectedExpertGroupId && this.expertGroups.length > 0) {
-          this.selectedExpertGroupId = this.expertGroups[0].id
+      if (!force && this.eventsByCardId[key]) {
+        return this.eventsByCardId[key]
+      }
+
+      if (this.eventsLoadingByCardId[key]) {
+        return this.eventsByCardId[key] ?? []
+      }
+
+      this.eventsLoadingByCardId = {
+        ...this.eventsLoadingByCardId,
+        [key]: true,
+      }
+
+      try {
+        const payload = await api.getStacCardEvents(stacCardId)
+        this.eventsByCardId = {
+          ...this.eventsByCardId,
+          [key]: payload?.events ?? [],
         }
-      } catch (error) {
-        console.error('❌ Ошибка загрузки meta:', error)
+        return this.eventsByCardId[key]
+      } finally {
+        this.eventsLoadingByCardId = {
+          ...this.eventsLoadingByCardId,
+          [key]: false,
+        }
+      }
+    },
+
+    async updateDiagnosisState(diagnosisStateId, payload) {
+      this.isUpdatingDiagnosisState = true
+
+      try {
+        const response = await api.updateDiagnosisState(diagnosisStateId, payload)
+        const updated = normalizeDiagnosisState(response?.diagnosis_state ?? {})
+        const nextDiagnosisStates = (this.diagnosisStates ?? [])
+          .filter((item) => item.id !== updated.id)
+          .concat(updated)
+          .sort(
+            (left, right) =>
+              left.stac_card_id - right.stac_card_id ||
+              left.expert_group_id - right.expert_group_id ||
+              left.diagnosis_id - right.diagnosis_id
+          )
+
+        this.diagnosisStates = nextDiagnosisStates
+        this.diagnosisStateIndex = buildDiagnosisStateIndex(nextDiagnosisStates)
+        this.stacCardDiagnosisIndex = buildStacCardDiagnosisIndex(
+          nextDiagnosisStates,
+          this.stacCardDiagnosisIndex
+        )
+        this.stacCards = syncCardStatuses(this.stacCards, nextDiagnosisStates)
+
+        return updated
+      } finally {
+        this.isUpdatingDiagnosisState = false
       }
     },
 
@@ -188,7 +660,27 @@ export const usePatientsStore = defineStore('patients', {
     },
 
     setSelectedDiagnosisIds(ids) {
-      this.selectedDiagnosisIds = Array.isArray(ids) ? ids : []
+      this.selectedDiagnosisIds = Array.isArray(ids)
+        ? ids.map(Number).filter((value) => Number.isFinite(value))
+        : []
     },
-  }
+
+    setSearchQuery(value) {
+      this.searchQuery = String(value ?? '')
+    },
+
+    setPatientFilter(key, value) {
+      this.patientFilters = {
+        ...this.patientFilters,
+        [key]: Array.isArray(value) ? [...value] : String(value ?? ''),
+      }
+    },
+
+    setStacFilter(key, value) {
+      this.stacFilters = {
+        ...this.stacFilters,
+        [key]: Array.isArray(value) ? [...value] : String(value ?? ''),
+      }
+    },
+  },
 })

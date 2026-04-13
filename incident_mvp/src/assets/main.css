@@ -161,8 +161,8 @@ body {
 }
 
 .state-btn--red {
-  border-color: #ef4444;
-  background-color: #ef4444;
+  border-color: #b0acac;
+  background-color: #8a8787;
 }
 
 .state-btn:disabled {
@@ -365,7 +365,8 @@ body {
 }
 
 /* Принято – синий primary */
-.status-cell[data-status="approved"] .status-pill {
+.status-cell[data-status="approved"] .status-pill,
+.status-cell[data-status="confirmed"] .status-pill {
   background-color: #3b82f6;   /* перекроет белый дефолт */
   border: none;
   color: #fff;

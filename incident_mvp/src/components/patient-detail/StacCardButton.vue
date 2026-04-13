@@ -3,8 +3,8 @@
     class="info-card info-card--stac stac-card-btn"
     :class="{ 'info-card--active': active }"
     type="button"
-    @click="emit('select', card.id)"
     :title="card.cardNumber"
+    @click="emit('select', card.id)"
   >
     <div class="info-card__title">Стац. карта</div>
 
@@ -15,17 +15,17 @@
 
     <div class="info-row">
       <div class="info-key">Госпит.</div>
-      <div class="info-val">{{ card.date_hosp ?? '—' }}</div>
+      <div class="info-val">{{ formatDate(card.date_hosp) }}</div>
     </div>
 
     <div class="info-row">
       <div class="info-key">Операция</div>
-      <div class="info-val">{{ card.date_operation ?? card.date_hosp ?? '—' }}</div>
+      <div class="info-val">{{ formatDate(card.date_operation ?? card.date_hosp) }}</div>
     </div>
 
     <div class="info-row info-row--last">
       <div class="info-key">Выписка</div>
-      <div class="info-val">{{ card.date_discharge ?? '—' }}</div>
+      <div class="info-val">{{ formatDate(card.date_discharge) }}</div>
     </div>
 
     <div class="info-row info-row--last">
@@ -36,6 +36,8 @@
 </template>
 
 <script setup>
+import { formatDate } from '@/utils/dateFormatter'
+
 defineProps({
   card: { type: Object, required: true },
   active: { type: Boolean, default: false },
@@ -45,7 +47,6 @@ const emit = defineEmits(['select'])
 </script>
 
 <style scoped>
-/* базовый вид карточки */
 .info-card {
   border: 1px solid #c6ccde;
   border-radius: 12px;
@@ -54,10 +55,9 @@ const emit = defineEmits(['select'])
   padding: 12px 14px;
 }
 
-/* стац-карты */
 .info-card--stac {
   flex: 0 0 auto;
-  width: 210px;          /* было 240px */
+  width: 210px;
   box-sizing: border-box;
 }
 
@@ -69,7 +69,7 @@ const emit = defineEmits(['select'])
 
 .info-row {
   display: grid;
-  grid-template-columns: 72px 1fr;  /* было 92px */
+  grid-template-columns: 72px 1fr;
   gap: 10px;
   padding: 6px 0;
   border-bottom: 1px solid #eef0f7;
@@ -98,8 +98,6 @@ const emit = defineEmits(['select'])
   box-sizing: border-box;
   border: 1px solid rgba(198, 204, 222, 0.85);
   background: #fff;
-
-  /* одинаковый “контур” у всех: у неактивных прозрачный */
   box-shadow:
     0 0 0 2px rgba(33, 86, 196, 0),
     0 10px 22px rgba(15, 23, 42, 0.08);
@@ -117,4 +115,3 @@ const emit = defineEmits(['select'])
     0 10px 22px rgba(15, 23, 42, 0.08);
 }
 </style>
-

@@ -2,33 +2,53 @@
   <tr
     class="event-row patient-row"
     :class="{ 'event-row--selected': isOpen }"
-    @click="emit('toggle', row.amb_card_num)"
+    @click="emit('toggle', row.key)"
   >
-    <td class="cell-center">{{ row.amb_card_num ?? '—' }}</td>
-    <td>{{ row.patientName ?? '—' }}</td>
-    <td class="cell-center">{{ row.birthDate ?? row.patient_birthday ?? '—' }}</td>
-    <td class="cell-center">{{ row.extra }}</td>
+    <td class="cell-center">
+      <HighlightedText :text="row.amb_card_num" :query="searchQuery" />
+    </td>
+    <td>
+      <HighlightedText :text="row.patientName" :query="searchQuery" />
+    </td>
+    <td class="cell-center">
+      <HighlightedText :text="formattedBirthDate" :query="searchQuery" />
+    </td>
+    <td class="cell-center">
+      <HighlightedText :text="row.departmentDisplay" :query="searchQuery" />
+    </td>
   </tr>
 
   <tr v-if="isOpen" class="event-details-row">
     <td colspan="4">
       <div class="event-details-inner is-open stac-wrapper">
-        <StacCardsTable :cards="cards" @open-stac-card="emit('open-stac-card', $event)" />
+        <StacCardsTable
+          :cards="cards"
+          :search-query="searchQuery"
+          @open-stac-card="emit('open-stac-card', $event)"
+        />
       </div>
     </td>
   </tr>
 </template>
 
 <script setup>
+import { computed } from 'vue'
+
+import HighlightedText from '@/components/ui/HighlightedText.vue'
+import { formatDate } from '@/utils/dateFormatter'
+
 import StacCardsTable from './StacCardsTable.vue'
 
-defineProps({
+const props = defineProps({
   row: { type: Object, required: true },
   isOpen: { type: Boolean, required: true },
   cards: { type: Array, required: true },
+  searchQuery: { type: String, default: '' },
 })
 
 const emit = defineEmits(['toggle', 'open-stac-card'])
+
+const formattedBirthDate = computed(() => formatDate(props.row.birthDate))
 </script>
 
 <style scoped>
@@ -40,7 +60,6 @@ const emit = defineEmits(['toggle', 'open-stac-card'])
   text-align: center;
 }
 
-/* как ты решил — без внешней “обводки” вокруг блока вложенной таблицы */
 .stac-wrapper {
   border: none;
   box-shadow: none;

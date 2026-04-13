@@ -11,70 +11,87 @@
   <main class="page-container">
     <div class="toolbar">
       <div class="toolbar-left toolbar-left--home">
-        <span id="visible-count">{{ patients.length }}</span> записей
+        <span id="visible-count">{{ visibleCards.length }}</span> записей
 
         <select
-          class="expert-group-select"
           v-model="selectedGroupId"
+          class="expert-group-select"
         >
-          <option v-for="g in expertGroups" :key="g.id" :value="g.id">
-            {{ g.title }}
+          <option
+            v-for="group in expertGroups"
+            :key="group.id"
+            :value="group.id"
+          >
+            {{ group.title }}
           </option>
         </select>
 
         <DiagnosisDropdown
-          :diagnoses="availableDiagnoses"
           v-model="selectedDiagnosisIds"
+          :diagnoses="availableDiagnoses"
         />
       </div>
 
       <div class="toolbar-right">
-        <input class="patients-search" placeholder="Поиск " disabled />
+        <input
+          v-model="searchQuery"
+          class="patients-search"
+          placeholder="Поиск по странице"
+        />
       </div>
     </div>
 
-    <PatientTable :patients="patients" @open-stac-card="openStacCard" />
+    <PatientTable
+      :rows="patientRows"
+      :stac-cards-by-amb="stacCardsByAmb"
+      :search-query="searchQuery"
+      @open-stac-card="openStacCard"
+    />
   </main>
 </template>
 
 <script setup>
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { usePatientsStore } from '@/stores/patients'
 
-import PatientTable from '@/components/patients/PatientTable.vue'
 import DiagnosisDropdown from '@/components/filters/DiagnosisDropdown.vue'
+import PatientTable from '@/components/patients/PatientTable.vue'
+import { usePatientsStore } from '@/stores/patients'
 
 const router = useRouter()
 const store = usePatientsStore()
 
 const expertGroups = computed(() => store.expertGroups)
+const availableDiagnoses = computed(() => store.availableDiagnosesForFilter ?? [])
+const visibleCards = computed(() => store.filteredStacCards)
+const patientRows = computed(() => store.filteredPatientRows)
+const stacCardsByAmb = computed(() => store.stacCardsByAmb)
 
 const selectedGroupId = computed({
   get: () => store.selectedExpertGroupId,
-  set: (val) => store.setExpertGroup(val),
+  set: (value) => store.setExpertGroup(value),
 })
-
-// список диагнозов для dropdown — уже учитывает выбранную эксперт-группу
-const availableDiagnoses = computed(() => store.availableDiagnosesForFilter ?? [])
 
 const selectedDiagnosisIds = computed({
   get: () => store.selectedDiagnosisIds,
-  set: (val) => store.setSelectedDiagnosisIds(val),
+  set: (value) => store.setSelectedDiagnosisIds(value),
 })
 
-const patients = computed(() => store.filteredStacCards)
+const searchQuery = computed({
+  get: () => store.searchQuery,
+  set: (value) => store.setSearchQuery(value),
+})
 
 function openStacCard(stacCardId) {
-  const g = store.selectedExpertGroupId
-  const dx = store.selectedDiagnosisIds?.[0] // открываем первым выбранный диагноз
+  const expertGroupId = store.selectedExpertGroupId
+  const diagnosisId = store.selectedDiagnosisIds?.[0]
 
   router.push({
     name: 'patient',
     params: { id: String(stacCardId) },
     query: {
-      ...(g ? { g } : {}),
-      ...(dx ? { dx } : {}),
+      ...(expertGroupId ? { g: expertGroupId } : {}),
+      ...(diagnosisId ? { dx: diagnosisId } : {}),
     },
   })
 }
@@ -96,7 +113,8 @@ function openStacCard(stacCardId) {
   background: #fff;
 }
 
-.expert-group-select:focus {
+.expert-group-select:focus,
+.patients-search:focus {
   outline: none;
   border-color: #2156c4;
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
@@ -106,9 +124,8 @@ function openStacCard(stacCardId) {
   padding: 6px 10px;
   border: 1px solid #c6ccde;
   border-radius: 8px;
-  width: 260px;
+  width: 280px;
   font-size: 13px;
   background: #fff;
-  opacity: 0.7;
 }
 </style>

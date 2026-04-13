@@ -1,15 +1,16 @@
-
-
-
 <script setup>
 import { onMounted } from 'vue'
+
 import { usePatientsStore } from '@/stores/patients'
 
 const store = usePatientsStore()
 
-onMounted(() => {
-  store.fetchPatients()
-  store.fetchMeta()
+onMounted(async () => {
+  try {
+    await store.bootstrap()
+  } catch (error) {
+    console.error(error)
+  }
 })
 </script>
 
@@ -19,7 +20,5 @@ onMounted(() => {
   </div>
 </template>
 
-
 <style scoped>
-
 </style>

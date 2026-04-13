@@ -2,25 +2,106 @@
   <table class="events-table patients-root-table">
     <thead>
       <tr>
-        <TableHeaderCell :icon="filterIconUrl">Амб. карта</TableHeaderCell>
-        <TableHeaderCell :icon="filterIconUrl">ФИО</TableHeaderCell>
-        <TableHeaderCell :icon="filterIconUrl">Дата рождения</TableHeaderCell>
-        <TableHeaderCell :icon="filterIconUrl">Доп столбец</TableHeaderCell>
+        <TableHeaderCell
+          :icon="filterIconUrl"
+          :active="Boolean(ambCardFilter)"
+        >
+          Амб. карта
+          <template #filter>
+            <input
+              v-model="ambCardFilter"
+              class="table-filter__input"
+              type="text"
+              placeholder="Номер амбулаторной карты"
+            />
+            <button class="table-filter__reset" type="button" @click="ambCardFilter = ''">
+              Сбросить
+            </button>
+          </template>
+        </TableHeaderCell>
+
+        <TableHeaderCell
+          :icon="filterIconUrl"
+          :active="Boolean(patientNameFilter)"
+        >
+          ФИО
+          <template #filter>
+            <input
+              v-model="patientNameFilter"
+              class="table-filter__input"
+              type="text"
+              placeholder="Фамилия, имя или отчество"
+            />
+            <button class="table-filter__reset" type="button" @click="patientNameFilter = ''">
+              Сбросить
+            </button>
+          </template>
+        </TableHeaderCell>
+
+        <TableHeaderCell
+          :icon="filterIconUrl"
+          :active="Boolean(birthDateFilter)"
+        >
+          Дата рождения
+          <template #filter>
+            <input
+              v-model="birthDateFilter"
+              class="table-filter__input"
+              type="date"
+            />
+            <button class="table-filter__reset" type="button" @click="birthDateFilter = ''">
+              Сбросить
+            </button>
+          </template>
+        </TableHeaderCell>
+
+        <TableHeaderCell
+          :icon="filterIconUrl"
+          :active="departmentFilter.length > 0"
+        >
+          Отделение
+          <template #filter>
+            <div v-if="departmentOptions.length > 0" class="table-filter__checkbox-list">
+              <label
+                v-for="department in departmentOptions"
+                :key="department"
+                class="table-filter__checkbox-item"
+              >
+                <input
+                  v-model="departmentFilter"
+                  type="checkbox"
+                  :value="department"
+                />
+                <span>{{ department }}</span>
+              </label>
+            </div>
+
+            <div v-else class="table-filter__empty">Нет доступных отделений</div>
+
+            <button class="table-filter__reset" type="button" @click="departmentFilter = []">
+              Сбросить
+            </button>
+          </template>
+        </TableHeaderCell>
       </tr>
     </thead>
 
     <tbody>
-      <template v-for="row in patientRows" :key="row.amb_card_num">
+      <template
+        v-for="row in rows"
+        :key="row.key"
+      >
         <PatientRow
           :row="row"
-          :is-open="openedAmb === row.amb_card_num"
-          :cards="stacCardsByAmb[row.amb_card_num] || []"
+          :is-open="openedAmb === row.key"
+          :cards="stacCardsByAmb[row.key] || []"
+          :search-query="searchQuery"
           @toggle="togglePatient"
           @open-stac-card="emit('open-stac-card', $event)"
         />
       </template>
 
-      <tr v-if="patientRows.length === 0">
+      <tr v-if="rows.length === 0">
         <td colspan="4" class="empty-cell">Нет данных</td>
       </tr>
     </tbody>
@@ -28,29 +109,63 @@
 </template>
 
 <script setup>
-import { ref, toRef } from 'vue'
-import filterIconUrl from '@/assets/img/filter.svg'
+import { computed, ref, watch } from 'vue'
 
-import { useStacCardsByAmb } from '@/composables/useStacCardsByAmb'
+import filterIconUrl from '@/assets/img/filter.svg'
+import { usePatientsStore } from '@/stores/patients'
+
 import PatientRow from './PatientRow.vue'
 import TableHeaderCell from './TableHeaderCell.vue'
 
 const props = defineProps({
-  patients: { type: Array, required: true }, // сейчас это список стац. карт
+  rows: { type: Array, required: true },
+  stacCardsByAmb: { type: Object, required: true },
+  searchQuery: { type: String, default: '' },
 })
 
 const emit = defineEmits(['open-stac-card'])
 
+const store = usePatientsStore()
 const openedAmb = ref(null)
-function togglePatient(amb) {
-  openedAmb.value = openedAmb.value === amb ? null : amb
-}
 
-const { stacCardsByAmb, patientRows } = useStacCardsByAmb(toRef(props, 'patients'))
+const ambCardFilter = computed({
+  get: () => store.patientFilters.ambCard,
+  set: (value) => store.setPatientFilter('ambCard', value),
+})
+
+const patientNameFilter = computed({
+  get: () => store.patientFilters.patientName,
+  set: (value) => store.setPatientFilter('patientName', value),
+})
+
+const birthDateFilter = computed({
+  get: () => store.patientFilters.birthDate,
+  set: (value) => store.setPatientFilter('birthDate', value),
+})
+
+const departmentFilter = computed({
+  get: () => store.patientFilters.departments,
+  set: (value) => store.setPatientFilter('departments', value),
+})
+
+const departmentOptions = computed(() => store.patientDepartmentOptions)
+
+watch(
+  () => props.rows.map((row) => row.key),
+  (keys) => {
+    if (openedAmb.value && !keys.includes(openedAmb.value)) {
+      openedAmb.value = null
+    }
+  },
+  { immediate: true }
+)
+
+function togglePatient(rowKey) {
+  openedAmb.value = openedAmb.value === rowKey ? null : rowKey
+}
 </script>
 
 <style scoped>
-/* Верхняя таблица (пациенты) */
 .patients-root-table th,
 .patients-root-table td {
   white-space: nowrap;
@@ -59,5 +174,46 @@ const { stacCardsByAmb, patientRows } = useStacCardsByAmb(toRef(props, 'patients
 .empty-cell {
   padding: 12px;
   opacity: 0.7;
+}
+
+.table-filter__input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid #d1d5f0;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.table-filter__checkbox-list {
+  display: grid;
+  gap: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+}
+
+.table-filter__checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.table-filter__empty {
+  font-size: 13px;
+  color: #64748b;
+  margin-bottom: 10px;
+}
+
+.table-filter__reset {
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid rgba(198, 204, 222, 0.95);
+  border-radius: 10px;
+  background: #f3f4f6;
+  cursor: pointer;
+  font-size: 13px;
 }
 </style>
