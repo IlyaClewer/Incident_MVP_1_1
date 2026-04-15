@@ -64,19 +64,18 @@
         :disabled="isSubmitting"
         @click="onTransfer"
       >
-        Передать
+        {{ transferButtonLabel }}
       </button>
     </div>
   </div>
 
   <BaseModal v-model:open="modalOpen" :title="modalTitle">
-    <div style="margin-top: 8px; font-size: 13px; color: #334155;">
-      Комментарий
-    </div>
+    <div class="modal-field-label">Комментарий</div>
 
     <textarea
       id="reject-reason-input"
       v-model="comment"
+      class="events-toolbar__textarea"
       placeholder="Введите комментарий..."
     />
 
@@ -93,11 +92,50 @@
     </template>
   </BaseModal>
 
+  <BaseModal v-model:open="transferModalOpen" title="Передать события">
+    <div class="transfer-modal">
+      <p class="transfer-modal__hint">
+        Выбрано событий: {{ selectedEventsCount }}. Укажите диагноз, к которому
+        нужно привязать выбранные события.
+      </p>
+
+      <label class="modal-field-label" for="transfer-target-select">
+        Целевой диагноз
+      </label>
+
+      <select
+        id="transfer-target-select"
+        v-model="transferTargetDiagnosisStateId"
+        class="transfer-modal__select"
+      >
+        <option
+          v-for="diagnosis in transferTargetOptions"
+          :key="diagnosis.value"
+          :value="diagnosis.value"
+        >
+          {{ diagnosis.label }}
+        </option>
+      </select>
+    </div>
+
+    <template #actions="{ close }">
+      <button type="button" class="state-btn" @click="close">Отмена</button>
+      <button
+        type="button"
+        class="state-btn"
+        :disabled="isSubmitting || !transferTargetDiagnosisStateId"
+        @click="onConfirmTransfer(close)"
+      >
+        {{ isSubmitting ? 'Передаю...' : 'Передать' }}
+      </button>
+    </template>
+  </BaseModal>
+
   <Send_notice :show="toastOpen" :text="toastText" />
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import BaseModal from '@/components/patient-detail/actions/BaseModal.vue'
 import Send_notice from '@/components/patient-detail/actions/Send_notice.vue'
@@ -108,15 +146,24 @@ const props = defineProps({
   active: { type: [String, Number], default: '' },
   diagnoses: { type: Array, default: () => [] },
   activeDiagnosis: { type: String, default: '' },
+  stacCardId: { type: [String, Number], default: null },
   diagnosisStateId: { type: [String, Number], default: null },
   diagnosisStatus: { type: String, default: '' },
+  selectedEventIds: { type: Array, default: () => [] },
+  transferTargetDiagnoses: { type: Array, default: () => [] },
 })
 
-const emit = defineEmits(['update:active', 'update:activeDiagnosis'])
+const emit = defineEmits([
+  'update:active',
+  'update:activeDiagnosis',
+  'transfer-complete',
+])
 
 const store = usePatientsStore()
 
 const modalOpen = ref(false)
+const transferModalOpen = ref(false)
+const transferTargetDiagnosisStateId = ref('')
 const action = ref('accept')
 const comment = ref('')
 const isSubmitting = ref(false)
@@ -124,6 +171,7 @@ const toastOpen = ref(false)
 const toastText = ref('')
 
 const canChangeState = computed(() => Boolean(props.diagnosisStateId))
+const selectedEventsCount = computed(() => (props.selectedEventIds ?? []).length)
 const normalizedStatus = computed(() => {
   switch (String(props.diagnosisStatus ?? '').toLowerCase()) {
     case 'confirmed':
@@ -139,10 +187,20 @@ const normalizedStatus = computed(() => {
 const isResolved = computed(() =>
   ['confirmed', 'rejected'].includes(normalizedStatus.value)
 )
-
 const showDecisionButtons = computed(() => !isResolved.value)
 const showReturnButton = computed(() => isResolved.value)
 const canReturn = computed(() => canChangeState.value && isResolved.value)
+const transferTargetOptions = computed(() =>
+  (props.transferTargetDiagnoses ?? []).map((diagnosis) => ({
+    value: String(diagnosis.diagnosisStateId),
+    label: `${diagnosis.title ?? diagnosis.name ?? diagnosis.id} | ${formatStatusLabel(diagnosis.status)}`,
+  }))
+)
+const transferButtonLabel = computed(() =>
+  selectedEventsCount.value > 0
+    ? `Передать (${selectedEventsCount.value})`
+    : 'Передать'
+)
 
 const modalTitle = computed(() => {
   switch (action.value) {
@@ -156,6 +214,34 @@ const modalTitle = computed(() => {
       return 'Действие'
   }
 })
+
+watch(
+  transferTargetOptions,
+  (targets) => {
+    const currentValue = String(transferTargetDiagnosisStateId.value ?? '')
+    const hasCurrentTarget = targets.some(
+      (target) => String(target.value) === currentValue
+    )
+
+    if (!hasCurrentTarget) {
+      transferTargetDiagnosisStateId.value = targets[0]?.value ?? ''
+    }
+  },
+  { immediate: true }
+)
+
+function formatStatusLabel(status) {
+  switch (String(status ?? '').toLowerCase()) {
+    case 'confirmed':
+    case 'approved':
+    case 'accepted':
+      return 'подтвержден'
+    case 'rejected':
+      return 'отклонен'
+    default:
+      return 'новый'
+  }
+}
 
 function showToast(text) {
   toastText.value = text
@@ -185,7 +271,18 @@ function onTransfer() {
     return
   }
 
-  showToast('Интерфейс передачи событий подключу следующим шагом')
+  if (selectedEventsCount.value === 0) {
+    showToast('Сначала отметьте события для передачи')
+    return
+  }
+
+  if (transferTargetOptions.value.length === 0) {
+    showToast('Для этой группы пока нет другого диагноза')
+    return
+  }
+
+  transferTargetDiagnosisStateId.value = transferTargetOptions.value[0]?.value ?? ''
+  transferModalOpen.value = true
 }
 
 async function onConfirm(close) {
@@ -219,6 +316,44 @@ async function onConfirm(close) {
   } catch (error) {
     showToast(
       error instanceof Error ? error.message : 'Не удалось сохранить статус'
+    )
+  } finally {
+    isSubmitting.value = false
+  }
+}
+
+async function onConfirmTransfer(close) {
+  if (!props.diagnosisStateId || !transferTargetDiagnosisStateId.value) {
+    return
+  }
+
+  const eventIds = (props.selectedEventIds ?? [])
+    .map((eventId) => Number(eventId))
+    .filter((eventId) => Number.isFinite(eventId))
+
+  if (eventIds.length === 0) {
+    showToast('Сначала отметьте события для передачи')
+    return
+  }
+
+  isSubmitting.value = true
+
+  try {
+    await store.transferDiagnosisEvents(
+      props.diagnosisStateId,
+      {
+        event_ids: eventIds,
+        target_diagnosis_state_id: Number(transferTargetDiagnosisStateId.value),
+      },
+      { stacCardId: props.stacCardId }
+    )
+
+    emit('transfer-complete')
+    showToast(eventIds.length === 1 ? 'Событие передано' : 'События переданы')
+    close()
+  } catch (error) {
+    showToast(
+      error instanceof Error ? error.message : 'Не удалось передать события'
     )
   } finally {
     isSubmitting.value = false
@@ -296,5 +431,71 @@ async function onConfirm(close) {
   border-color: #2156c4;
   color: #fff;
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.08);
+}
+
+.modal-field-label {
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.events-toolbar__textarea,
+.transfer-modal__select {
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  font: inherit;
+  color: #0f172a;
+  background: #fff;
+}
+
+.events-toolbar__textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.transfer-modal {
+  display: grid;
+  gap: 10px;
+}
+
+.transfer-modal__hint {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #475569;
+}
+
+@media (max-width: 980px) {
+  .events-toolbar {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+  }
+
+  .events-toolbar__left {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .events-toolbar__right {
+    grid-column: 1;
+    grid-row: 2;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 720px) {
+  .events-toolbar__left {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+  }
+
+  .expert-tabs,
+  .diagnosis-tabs {
+    grid-column: 1;
+  }
 }
 </style>

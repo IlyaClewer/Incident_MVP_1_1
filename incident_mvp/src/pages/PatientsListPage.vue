@@ -30,21 +30,49 @@
           v-model="selectedDiagnosisIds"
           :diagnoses="availableDiagnoses"
         />
+
+        <button
+          class="filters-reset-all"
+          type="button"
+          :disabled="!hasAnyFilters"
+          @click="resetAllFilters"
+        >
+          Сбросить фильтры
+        </button>
       </div>
 
-      <div class="toolbar-right">
+      <div class="toolbar-right toolbar-right--search">
         <input
-          v-model="searchQuery"
+          v-model="searchDraft"
           class="patients-search"
           placeholder="Поиск по странице"
+          @keydown.enter.prevent="applySearch"
         />
+
+        <button
+          class="patients-search-btn"
+          type="button"
+          :disabled="!isSearchDirty"
+          @click="applySearch"
+        >
+          Найти
+        </button>
+
+        <button
+          v-if="hasSearchValue"
+          class="patients-search-reset"
+          type="button"
+          @click="resetSearch"
+        >
+          Сброс
+        </button>
       </div>
     </div>
 
     <PatientTable
       :rows="patientRows"
       :stac-cards-by-amb="stacCardsByAmb"
-      :search-query="searchQuery"
+      :search-query="appliedSearchQuery"
       @open-stac-card="openStacCard"
     />
   </main>
@@ -77,10 +105,40 @@ const selectedDiagnosisIds = computed({
   set: (value) => store.setSelectedDiagnosisIds(value),
 })
 
-const searchQuery = computed({
-  get: () => store.searchQuery,
-  set: (value) => store.setSearchQuery(value),
+const searchDraft = computed({
+  get: () => store.searchDraft,
+  set: (value) => store.setSearchDraft(value),
 })
+
+const appliedSearchQuery = computed(() => store.searchQuery)
+const isSearchDirty = computed(() => store.searchDraft !== store.searchQuery)
+const hasSearchValue = computed(() => Boolean(store.searchDraft || store.searchQuery))
+const hasAnyFilters = computed(() =>
+  store.selectedExpertGroupId !== 'all' ||
+  store.selectedDiagnosisIds.length > 0 ||
+  Boolean(store.searchDraft || store.searchQuery) ||
+  Boolean(store.patientFilters.ambCard) ||
+  Boolean(store.patientFilters.patientName) ||
+  Boolean(store.patientFilters.birthDate) ||
+  store.patientFilters.departments.length > 0 ||
+  store.stacFilters.departmentValues.length > 0 ||
+  Boolean(store.stacFilters.dateHosp) ||
+  Boolean(store.stacFilters.dateOperation) ||
+  Boolean(store.stacFilters.dateDischarge) ||
+  store.stacFilters.statuses.length > 0
+)
+
+function applySearch() {
+  store.applySearchQuery()
+}
+
+function resetSearch() {
+  store.resetSearchQuery()
+}
+
+function resetAllFilters() {
+  store.resetAllFilters()
+}
 
 function openStacCard(stacCardId) {
   const expertGroupId = store.selectedExpertGroupId
@@ -103,6 +161,8 @@ function openStacCard(stacCardId) {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+  position: relative;
+  z-index: 5;
 }
 
 .expert-group-select {
@@ -120,6 +180,10 @@ function openStacCard(stacCardId) {
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
 }
 
+.toolbar-right--search {
+  align-items: center;
+}
+
 .patients-search {
   padding: 6px 10px;
   border: 1px solid #c6ccde;
@@ -127,5 +191,57 @@ function openStacCard(stacCardId) {
   width: 280px;
   font-size: 13px;
   background: #fff;
+}
+
+.patients-search-btn,
+.patients-search-reset {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid #2156c4;
+  background: #2156c4;
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.patients-search-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.patients-search-reset {
+  border-color: #c6ccde;
+  background: #fff;
+  color: #334155;
+}
+
+.filters-reset-all {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid #c6ccde;
+  border-radius: 8px;
+  background: #fff;
+  color: #334155;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.filters-reset-all::before {
+  content: "↺";
+  font-size: 13px;
+  line-height: 1;
+}
+
+.filters-reset-all:hover:not(:disabled) {
+  background: #eef4ff;
+  border-color: #93c5fd;
+}
+
+.filters-reset-all:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 </style>

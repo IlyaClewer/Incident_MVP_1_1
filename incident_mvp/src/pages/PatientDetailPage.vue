@@ -34,15 +34,22 @@
           :active="activeExpertGroupId"
           :diagnoses="diagnosisTabTitles"
           :active-diagnosis="activeDiagnosisTitle"
+          :stac-card-id="card?.id ?? null"
           :diagnosis-state-id="activeDiagnosis?.diagnosisStateId ?? null"
           :diagnosis-status="activeDiagnosis?.status ?? ''"
+          :selected-event-ids="selectedEventIds"
+          :transfer-target-diagnoses="transferTargetDiagnoses"
           @update:active="onSelectGroup"
           @update:activeDiagnosis="onSelectDiagnosisTitle"
+          @transfer-complete="clearSelectedEvents"
         />
 
         <StacEventsTable
           :events="displayedEvents"
           :diagnosis="activeDiagnosis"
+          :selected-event-ids="selectedEventIds"
+          :selection-enabled="Boolean(activeDiagnosis?.diagnosisStateId)"
+          @update:selectedEventIds="onSelectedEventIdsChange"
         />
       </div>
     </template>
@@ -107,6 +114,7 @@ const expertGroupsForToolbar = computed(() => {
 })
 
 const activeExpertGroupId = ref('all')
+const selectedEventIds = ref([])
 
 const cardDiagnosesInGroup = computed(() => {
   if (!card.value) {
@@ -157,6 +165,23 @@ const activeDiagnosis = computed(() => {
     title: diagnosis.name,
     description: diagnosis.description?.trim() ?? '',
   }
+})
+
+const transferTargetDiagnoses = computed(() => {
+  if (!activeDiagnosis.value?.diagnosisStateId) {
+    return []
+  }
+
+  return cardDiagnosesInGroup.value
+    .filter(
+      (diagnosis) =>
+        String(diagnosis.diagnosisStateId) !==
+        String(activeDiagnosis.value.diagnosisStateId)
+    )
+    .map((diagnosis) => ({
+      ...diagnosis,
+      title: diagnosis.name,
+    }))
 })
 
 const displayedEvents = computed(() => {
@@ -235,6 +260,27 @@ watch(
   { immediate: true }
 )
 
+watch(
+  () => [props.id, activeExpertGroupId.value, activeDiagnosisTitle.value],
+  () => {
+    clearSelectedEvents()
+  }
+)
+
+watch(
+  displayedEvents,
+  (events) => {
+    const visibleEventIds = new Set(
+      (events ?? []).map((event) => Number(event.id))
+    )
+
+    selectedEventIds.value = selectedEventIds.value.filter((eventId) =>
+      visibleEventIds.has(Number(eventId))
+    )
+  },
+  { immediate: true }
+)
+
 function onSelectGroup(groupId) {
   activeExpertGroupId.value = groupId
   activeDiagnosisTitle.value = cardDiagnosesInGroup.value[0]?.name ?? OTHER_TITLE
@@ -262,6 +308,16 @@ function onSelectDiagnosisTitle(title) {
       dx: diagnosisId === OTHER_ID ? undefined : diagnosisId,
     },
   })
+}
+
+function onSelectedEventIdsChange(ids) {
+  selectedEventIds.value = Array.isArray(ids)
+    ? [...new Set(ids.map(Number).filter((value) => Number.isFinite(value)))]
+    : []
+}
+
+function clearSelectedEvents() {
+  selectedEventIds.value = []
 }
 
 function goBack() {

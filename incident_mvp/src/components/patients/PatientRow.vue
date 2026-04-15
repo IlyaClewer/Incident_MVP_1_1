@@ -60,9 +60,18 @@ const formattedBirthDate = computed(() => formatDate(props.row.birthDate))
   text-align: center;
 }
 
+.event-details-row {
+  position: relative;
+  z-index: 80;
+}
+
 .stac-wrapper {
   border: none;
   box-shadow: none;
   background: transparent;
+  max-height: none;
+  overflow: visible;
+  position: relative;
+  z-index: 20;
 }
 </style>

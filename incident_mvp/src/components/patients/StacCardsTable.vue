@@ -221,18 +221,20 @@ function formatStatusLabel(status) {
   border-collapse: collapse;
   table-layout: auto;
   background: #fff;
-  border: 1px solid rgba(77, 79, 86, 0.55);
-  box-shadow: 0 0 0 1px rgba(17, 24, 39, 0.14);
+  border: 1px solid rgba(198, 204, 222, 0.75);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
   border-radius: 10px;
-  overflow: hidden;
+  overflow: visible;
+  position: relative;
+  z-index: 20;
 }
 
 .stac-table th,
 .stac-table td {
   width: auto;
   padding: 6px 8px;
-  border-bottom: 1px solid rgba(17, 24, 39, 0.12);
-  border-right: 1px solid rgba(17, 24, 39, 0.12);
+  border-bottom: 1px solid rgba(198, 204, 222, 0.55);
+  border-right: 1px solid rgba(198, 204, 222, 0.45);
   background: #fff;
   font-size: 12px;
   vertical-align: middle;
@@ -249,7 +251,7 @@ function formatStatusLabel(status) {
 }
 
 .stac-table thead th {
-  background: linear-gradient(180deg, #f8f9fe 0%, #eaecf6 100%);
+  background: linear-gradient(180deg, #f9fbff 0%, #f0f4fb 100%);
   font-weight: 700;
 }
 
@@ -299,7 +301,8 @@ function formatStatusLabel(status) {
   gap: 8px;
   max-height: 220px;
   overflow-y: auto;
-  margin-bottom: 10px;
+  margin-bottom: 0;
+  padding-right: 2px;
 }
 
 .table-filter__checkbox-item {
@@ -312,17 +315,34 @@ function formatStatusLabel(status) {
 .table-filter__empty {
   font-size: 13px;
   color: #64748b;
-  margin-bottom: 10px;
+  margin-bottom: 0;
 }
 
 .table-filter__reset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   width: 100%;
-  margin-top: 10px;
-  padding: 8px 10px;
+  margin-top: 2px;
+  padding: 9px 12px;
   border: 1px solid rgba(198, 204, 222, 0.95);
   border-radius: 10px;
-  background: #f3f4f6;
+  background: #f8fafc;
+  color: #334155;
   cursor: pointer;
   font-size: 13px;
+  font-weight: 600;
+}
+
+.table-filter__reset::before {
+  content: "↺";
+  font-size: 13px;
+  line-height: 1;
+}
+
+.table-filter__reset:hover {
+  background: #eef4ff;
+  border-color: #93c5fd;
 }
 </style>

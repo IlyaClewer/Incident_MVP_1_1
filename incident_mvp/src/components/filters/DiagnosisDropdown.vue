@@ -44,10 +44,19 @@ const vClickOutside = {
     el.__clickOutsideHandler__ = (event) => {
       if (!el.contains(event.target)) binding.value(event)
     }
-    document.addEventListener('click', el.__clickOutsideHandler__)
+
+    el.__escapeHandler__ = (event) => {
+      if (event.key === 'Escape') {
+        binding.value(event)
+      }
+    }
+
+    document.addEventListener('pointerdown', el.__clickOutsideHandler__, true)
+    document.addEventListener('keydown', el.__escapeHandler__)
   },
   unmounted(el) {
-    document.removeEventListener('click', el.__clickOutsideHandler__)
+    document.removeEventListener('pointerdown', el.__clickOutsideHandler__, true)
+    document.removeEventListener('keydown', el.__escapeHandler__)
   },
 }
 
@@ -83,6 +92,7 @@ function reset() {
 .dx-dropdown {
   position: relative;
   display: inline-block;
+  z-index: 1300;
 }
 
 .dx-btn {
@@ -116,7 +126,7 @@ function reset() {
   border-radius: 12px;
   box-shadow: 0 12px 30px rgba(15, 23, 42, 0.18);
   padding: 10px;
-  z-index: 1000;
+  z-index: 1300;
 }
 
 .dx-item {

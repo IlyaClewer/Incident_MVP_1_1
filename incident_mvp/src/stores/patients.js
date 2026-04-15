@@ -334,6 +334,7 @@ export const usePatientsStore = defineStore('patients', {
     eventsLoadingByCardId: {},
     selectedExpertGroupId: 'all',
     selectedDiagnosisIds: [],
+    searchDraft: '',
     searchQuery: '',
     patientFilters: DEFAULT_PATIENT_FILTERS(),
     stacFilters: DEFAULT_STAC_FILTERS(),
@@ -341,6 +342,7 @@ export const usePatientsStore = defineStore('patients', {
     isLoadingPatients: false,
     isLoadingMeta: false,
     isUpdatingDiagnosisState: false,
+    isTransferringDiagnosisEvents: false,
     bootstrapError: '',
   }),
 
@@ -654,6 +656,27 @@ export const usePatientsStore = defineStore('patients', {
       }
     },
 
+    async transferDiagnosisEvents(diagnosisStateId, payload, options = {}) {
+      this.isTransferringDiagnosisEvents = true
+
+      try {
+        const response = await api.transferDiagnosisEvents(diagnosisStateId, payload)
+        const resolvedStacCardId =
+          options?.stacCardId ??
+          this.diagnosisStates.find(
+            (item) => String(item.id) === String(diagnosisStateId)
+          )?.stac_card_id
+
+        if (resolvedStacCardId != null) {
+          await this.fetchEventsForCard(resolvedStacCardId, true)
+        }
+
+        return response
+      } finally {
+        this.isTransferringDiagnosisEvents = false
+      }
+    },
+
     setExpertGroup(id) {
       this.selectedExpertGroupId = id
       this.selectedDiagnosisIds = []
@@ -665,8 +688,28 @@ export const usePatientsStore = defineStore('patients', {
         : []
     },
 
-    setSearchQuery(value) {
-      this.searchQuery = String(value ?? '')
+    setSearchDraft(value) {
+      this.searchDraft = String(value ?? '')
+    },
+
+    applySearchQuery(value = this.searchDraft) {
+      const nextValue = String(value ?? '')
+      this.searchDraft = nextValue
+      this.searchQuery = nextValue
+    },
+
+    resetSearchQuery() {
+      this.searchDraft = ''
+      this.searchQuery = ''
+    },
+
+    resetAllFilters() {
+      this.selectedExpertGroupId = 'all'
+      this.selectedDiagnosisIds = []
+      this.searchDraft = ''
+      this.searchQuery = ''
+      this.patientFilters = DEFAULT_PATIENT_FILTERS()
+      this.stacFilters = DEFAULT_STAC_FILTERS()
     },
 
     setPatientFilter(key, value) {

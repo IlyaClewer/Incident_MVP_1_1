@@ -171,6 +171,10 @@ function togglePatient(rowKey) {
   white-space: nowrap;
 }
 
+.patients-root-table > thead {
+  z-index: 900;
+}
+
 .empty-cell {
   padding: 12px;
   opacity: 0.7;
@@ -190,7 +194,8 @@ function togglePatient(rowKey) {
   gap: 8px;
   max-height: 220px;
   overflow-y: auto;
-  margin-bottom: 10px;
+  margin-bottom: 0;
+  padding-right: 2px;
 }
 
 .table-filter__checkbox-item {
@@ -203,17 +208,34 @@ function togglePatient(rowKey) {
 .table-filter__empty {
   font-size: 13px;
   color: #64748b;
-  margin-bottom: 10px;
+  margin-bottom: 0;
 }
 
 .table-filter__reset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   width: 100%;
-  margin-top: 10px;
-  padding: 8px 10px;
+  margin-top: 2px;
+  padding: 9px 12px;
   border: 1px solid rgba(198, 204, 222, 0.95);
   border-radius: 10px;
-  background: #f3f4f6;
+  background: #f8fafc;
+  color: #334155;
   cursor: pointer;
   font-size: 13px;
+  font-weight: 600;
+}
+
+.table-filter__reset::before {
+  content: "↺";
+  font-size: 13px;
+  line-height: 1;
+}
+
+.table-filter__reset:hover {
+  background: #eef4ff;
+  border-color: #93c5fd;
 }
 </style>

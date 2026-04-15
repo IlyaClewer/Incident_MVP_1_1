@@ -55,10 +55,18 @@ const vClickOutside = {
       }
     }
 
-    document.addEventListener('click', el.__clickOutsideHandler__)
+    el.__escapeHandler__ = (event) => {
+      if (event.key === 'Escape') {
+        binding.value(event)
+      }
+    }
+
+    document.addEventListener('pointerdown', el.__clickOutsideHandler__, true)
+    document.addEventListener('keydown', el.__escapeHandler__)
   },
   unmounted(el) {
-    document.removeEventListener('click', el.__clickOutsideHandler__)
+    document.removeEventListener('pointerdown', el.__clickOutsideHandler__, true)
+    document.removeEventListener('keydown', el.__escapeHandler__)
   },
 }
 
@@ -133,7 +141,9 @@ function close() {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  z-index: 50;
+  z-index: 1200;
+  display: grid;
+  gap: 10px;
   min-width: 220px;
   max-width: 280px;
   padding: 12px;

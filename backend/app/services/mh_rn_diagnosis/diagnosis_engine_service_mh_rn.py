@@ -1,13 +1,14 @@
 from typing import List, Dict, Any, Set
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.diagnosis import DEFAULT_WORKER_DIAGNOSIS_STATUS_ID
 from app.services.is_diagnosis import DiagnosisRule, matched_events
 from app.db.models.events import Event, EventType
 from app.db.models.diagnoses import DiagnosisType
 
 
 DEFAULT_EXPERTS_GROUP_ID = 1  # временно константа
-DEFAULT_STATUS_ID = 2         # например, "Предварительный"
+DEFAULT_STATUS_ID = int(DEFAULT_WORKER_DIAGNOSIS_STATUS_ID)
 
 
 async def calculate_diagnoses_for_mhrn(

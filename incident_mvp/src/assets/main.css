@@ -131,7 +131,7 @@ body {
   margin-bottom: 10px;
   position: sticky;
   top: 56px;
-  z-index: 250;
+  z-index: 1300;
   background: rgba(245, 247, 251, 0.95);
   backdrop-filter: blur(6px);
   border: 1px solid #c6ccde;

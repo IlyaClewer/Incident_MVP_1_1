@@ -5,13 +5,14 @@ from typing import Dict, Any, List, Set, Tuple
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.diagnosis import DEFAULT_WORKER_DIAGNOSIS_STATUS_ID
 from app.db.models.events import Event, EventType
 from app.db.models.diagnoses import DiagnosisType, DiagnosisEventDirectory
 from app.services.is_diagnosis import DiagnosisRule, matched_events
 from datetime import datetime
 
 DEFAULT_EXPERTS_GROUP_ID = 1
-DEFAULT_STATUS_ID = 2  # например, "Предварительный"
+DEFAULT_STATUS_ID = int(DEFAULT_WORKER_DIAGNOSIS_STATUS_ID)
 
 
 def build_indexes(
