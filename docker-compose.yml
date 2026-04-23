@@ -1,0 +1,27 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: incident-backend
+    env_file:
+      - ../incident_secret/.env
+    environment:
+      APP_ENV: docker
+      DB_HOST: host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./incident_mvp
+      dockerfile: Dockerfile
+    container_name: incident-web
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+    restart: unless-stopped
