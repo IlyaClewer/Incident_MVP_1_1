@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     APP_ENV: str = "dev"
     DEBUG: bool = False
 
+    ISBP_BASE_URL: str = "https://test-aipss.cito-priorov.ru"
+    ISBP_STATIC_TOKEN: str | None = None
+    ISBP_CREATE_PATH: str = "/vbo/create_from_incidents"
+    ISBP_STATUS_PATH: str = "/vbo/incidents/status"
+    ISBP_TIMEOUT_SECONDS: int = 15
+    ISBP_POLL_LIMIT: int = 100
+
     DB_HOST: str
     DB_PORT: int = 5432
     DB_NAME: str

@@ -1,102 +1,126 @@
-from typing import List, Dict, Any, Set
+from __future__ import annotations
+
+from typing import Any
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.diagnosis import DEFAULT_WORKER_DIAGNOSIS_STATUS_ID
-from app.services.is_diagnosis import DiagnosisRule, matched_events
+from app.db.models.diagnoses import DiagnosisEventDirectory, DiagnosisType, ExpGroupDiagnosis
 from app.db.models.events import Event, EventType
-from app.db.models.diagnoses import DiagnosisType
+from app.services.is_diagnosis import DiagnosisRule, matched_events
 
-
-DEFAULT_EXPERTS_GROUP_ID = 1  # временно константа
 DEFAULT_STATUS_ID = int(DEFAULT_WORKER_DIAGNOSIS_STATUS_ID)
 
 
 async def calculate_diagnoses_for_mhrn(
     session: AsyncSession,
     mh_rn: int,
-    experts_group_id: int = DEFAULT_EXPERTS_GROUP_ID,
     default_status_id: int = DEFAULT_STATUS_ID,
-) -> Dict[str, List[Dict[str, Any]]]:
-    """
-    Считает диагнозы для одной стацкарты (mh_rn) и
-    возвращает заготовки для diagnosis_state и diagnosis_events_state.
-    Ничего в БД не пишет.
-    """
-    # 1. События по карте с их seq_numb
-    q = (
-        select(Event.id, Event.event_type_id, Event.event_timestamp, Event.created_at,
-               Event.updated_at, EventType.seq_numb)
+) -> dict[str, list[dict[str, Any]]]:
+    result = await session.execute(
+        select(
+            Event.id,
+            Event.event_type_id,
+            EventType.seq_numb,
+        )
         .join(EventType, Event.event_type_id == EventType.id)
         .where(Event.mh_rn == mh_rn)
     )
-    result = await session.execute(q)
     rows = result.all()
-
     if not rows:
         return {
             "diagnosis_state_rows": [],
             "diagnosis_events_state_rows": [],
         }
 
-    # построить множество номеров и карту номер -> ids событий
-    active_event_nums: Set[int] = set()
-    event_num_to_event_ids: Dict[int, Set[int]] = {}
-
-    for event_id, _, _, _, _, seq_numb in rows:
+    active_event_nums: set[int] = set()
+    event_num_to_event_ids: dict[int, set[int]] = {}
+    event_type_ids: set[int] = set()
+    for event_id, event_type_id, seq_numb in rows:
+        event_type_ids.add(event_type_id)
         if seq_numb is None:
             continue
-        num = int(seq_numb)
-        active_event_nums.add(num)
-        event_num_to_event_ids.setdefault(num, set()).add(event_id)
+        seq_num = int(seq_numb)
+        active_event_nums.add(seq_num)
+        event_num_to_event_ids.setdefault(seq_num, set()).add(event_id)
 
-    # 2. Все диагнозы
-    diag_result = await session.execute(select(DiagnosisType))
-    diagnoses = diag_result.scalars().all()
+    diagnoses = (await session.execute(select(DiagnosisType))).scalars().all()
+    directory_rows = (
+        await session.execute(
+            select(
+                DiagnosisEventDirectory.events_type_id,
+                DiagnosisEventDirectory.diagnosis_id,
+            )
+        )
+    ).all()
+    event_type_to_diag_ids: dict[int, set[int]] = {}
+    for events_type_id, diagnosis_id in directory_rows:
+        event_type_to_diag_ids.setdefault(events_type_id, set()).add(diagnosis_id)
 
-      # твой движок
+    candidate_diag_ids: set[int] = set()
+    for event_type_id in event_type_ids:
+        candidate_diag_ids.update(event_type_to_diag_ids.get(event_type_id, set()))
 
-    diagnosis_state_rows: List[Dict[str, Any]] = []
-    diagnosis_events_state_rows: List[Dict[str, Any]] = []
+    diagnosis_group_rows = (
+        await session.execute(
+            select(
+                ExpGroupDiagnosis.diagnosis_type_id,
+                ExpGroupDiagnosis.experts_group_id,
+            )
+        )
+    ).all()
+    diagnosis_to_expert_group_ids: dict[int, set[int]] = {}
+    for diagnosis_type_id, experts_group_id in diagnosis_group_rows:
+        diagnosis_to_expert_group_ids.setdefault(diagnosis_type_id, set()).add(experts_group_id)
 
-    for diag in diagnoses:
-        if not diag.formula:
+    diagnosis_state_rows: list[dict[str, Any]] = []
+    diagnosis_events_state_rows: list[dict[str, Any]] = []
+
+    for diagnosis in diagnoses:
+        if diagnosis.id not in candidate_diag_ids or not diagnosis.formula:
             continue
 
-        rule = DiagnosisRule(diag.id, diag.title, diag.formula)
+        assigned_group_ids = sorted(
+            diagnosis_to_expert_group_ids.get(diagnosis.id, set())
+        )
+        if not assigned_group_ids:
+            continue
+
+        rule = DiagnosisRule(diagnosis.id, diagnosis.title, diagnosis.formula)
         matched = rule.check(active_event_nums)
         if not matched:
             continue
 
-        # номера событий, реально удовлетворившие формулу
         matched_nums = matched_events(rule.ast, active_event_nums)
         if not matched_nums:
             continue
 
-        # все реальные event.id по этим номерам
-        event_ids_for_diag: Set[int] = set()
-        for num in matched_nums:
-            event_ids_for_diag |= event_num_to_event_ids.get(num, set())
-
+        event_ids_for_diag: set[int] = set()
+        for seq_num in matched_nums:
+            event_ids_for_diag.update(event_num_to_event_ids.get(seq_num, set()))
         if not event_ids_for_diag:
             continue
 
-        # diagnosis_state — пока без id, его получим на шаге вставки
-        diagnosis_state_rows.append({
-            "experts_group_id": experts_group_id,
-            "mh_rn": mh_rn,
-            "diagnosis_types_id": diag.id,
-            "status_id": default_status_id,
-        })
-
-        # diagnosis_events_state — привяжем позже к diagnosis_state_id,
-        # здесь запомнили только diagnosis_types_id + events_id
-        for eid in sorted(event_ids_for_diag):
-            diagnosis_events_state_rows.append({
-                "diagnosis_types_id": diag.id,  # временно, потом заменим на diagnosis_state_id
-                "events_id": eid,
-                "is_transferred": False,
-                "transferred_by": None,
-            })
+        for experts_group_id in assigned_group_ids:
+            diagnosis_state_rows.append(
+                {
+                    "experts_group_id": experts_group_id,
+                    "mh_rn": mh_rn,
+                    "diagnosis_types_id": diagnosis.id,
+                    "status_id": default_status_id,
+                }
+            )
+            for event_id in sorted(event_ids_for_diag):
+                diagnosis_events_state_rows.append(
+                    {
+                        "experts_group_id": experts_group_id,
+                        "diagnosis_types_id": diagnosis.id,
+                        "events_id": event_id,
+                        "is_transferred": False,
+                        "transferred_by": None,
+                    }
+                )
 
     return {
         "diagnosis_state_rows": diagnosis_state_rows,

@@ -8,9 +8,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.db.models import DiagnosisState, DiagnosisType, Event, ExpertsGroup, FullEvent, StacCard
+from app.db.models import DiagnosisState, DiagnosisType, Event, ExpertsGroup, FullEvent, GroupDiagnosis, StacCard
+from app.db.models.remote import RemoteIncForModel, RemoteIncGroupDiagnosis
 from app.schemas.events import EventDetailField, StacCardEventItem
-from app.schemas.meta import DiagnosisMeta, DiagnosisStateMeta, ExpertGroupMeta
+from app.schemas.meta import (
+    DiagnosisMeta,
+    DiagnosisStateMeta,
+    ExpertGroupMeta,
+    GroupDiagnosisMeta,
+    ModelResultMeta,
+)
 from app.schemas.patients import PatientSummary, StacCardSummary
 
 STATUS_ALIASES = {
@@ -242,13 +249,28 @@ class PatientsService:
     @staticmethod
     async def get_meta(
         session: AsyncSession,
-    ) -> tuple[list[ExpertGroupMeta], list[DiagnosisMeta], list[DiagnosisStateMeta], dict[str, list[int]]]:
+    ) -> tuple[
+        list[ExpertGroupMeta],
+        list[GroupDiagnosisMeta],
+        list[DiagnosisMeta],
+        list[DiagnosisStateMeta],
+        dict[str, list[int]],
+        list[ModelResultMeta],
+    ]:
         group_result = await session.execute(
             select(ExpertsGroup)
-            .options(selectinload(ExpertsGroup.diagnosis_links))
+            .options(
+                selectinload(ExpertsGroup.diagnosis_links),
+                selectinload(ExpertsGroup.diagnosis_group_links),
+            )
             .order_by(ExpertsGroup.id)
         )
         groups = group_result.scalars().unique().all()
+
+        diagnosis_group_result = await session.execute(
+            select(GroupDiagnosis).order_by(GroupDiagnosis.id)
+        )
+        diagnosis_groups = diagnosis_group_result.scalars().all()
 
         diagnosis_result = await session.execute(
             select(DiagnosisType)
@@ -265,8 +287,59 @@ class PatientsService:
                 id=group.id,
                 title=group.title,
                 diagnosis_ids=sorted({link.diagnosis_type_id for link in group.diagnosis_links}),
+                group_diagnosis_ids=sorted(
+                    {link.group_diagnosis_id for link in group.diagnosis_group_links}
+                ),
+                primary_group_diagnosis_id=group.group_diagnosis_id,
             )
             for group in groups
+        ]
+        diagnosis_groups_payload = [
+            GroupDiagnosisMeta(
+                id=group.id,
+                title=group.title,
+            )
+            for group in diagnosis_groups
+        ]
+
+        model_result = await session.execute(
+            select(RemoteIncForModel).order_by(RemoteIncForModel.mh_rn, RemoteIncForModel.id)
+        )
+        model_rows = model_result.scalars().all()
+        model_group_titles: dict[int, str] = {}
+        if model_rows:
+            model_group_ids = sorted(
+                {
+                    row.group_diagnosis_id
+                    for row in model_rows
+                    if row.group_diagnosis_id is not None
+                }
+            )
+            if model_group_ids:
+                model_group_result = await session.execute(
+                    select(RemoteIncGroupDiagnosis).where(
+                        RemoteIncGroupDiagnosis.id.in_(model_group_ids)
+                    )
+                )
+                model_group_titles = {
+                    group.id: group.title or ""
+                    for group in model_group_result.scalars().all()
+                }
+
+        model_results_payload = [
+            ModelResultMeta(
+                id=row.id,
+                stac_card_id=row.mh_rn,
+                group_diagnosis_id=row.group_diagnosis_id,
+                group_diagnosis_title=(
+                    model_group_titles.get(row.group_diagnosis_id)
+                    if row.group_diagnosis_id is not None
+                    else None
+                ),
+                has_complication=bool(row.has_complication),
+                probability=float(row.probability) if row.probability is not None else None,
+            )
+            for row in model_rows
         ]
 
         stac_card_diagnosis_index: dict[str, set[int]] = defaultdict(set)
@@ -306,6 +379,7 @@ class PatientsService:
 
         return (
             expert_groups_payload,
+            diagnosis_groups_payload,
             diagnosis_payload,
             diagnosis_states_payload,
             {
@@ -315,6 +389,7 @@ class PatientsService:
                     key=lambda item: int(item[0]),
                 )
             },
+            model_results_payload,
         )
 
     @staticmethod

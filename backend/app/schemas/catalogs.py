@@ -5,16 +5,22 @@ class ExpertGroupCatalogItem(APIModel):
     id: int
     title: str
     diagnosis_ids: list[int]
+    group_diagnosis_ids: list[int] = []
+    primary_group_diagnosis_id: int | None = None
 
 
 class ExpertGroupCreate(APIModel):
     title: str
     diagnosis_ids: list[int] = []
+    group_diagnosis_ids: list[int] = []
+    primary_group_diagnosis_id: int | None = None
 
 
 class ExpertGroupUpdate(APIModel):
     title: str | None = None
     diagnosis_ids: list[int] | None = None
+    group_diagnosis_ids: list[int] | None = None
+    primary_group_diagnosis_id: int | None = None
 
 
 class DiagnosisTypeCatalogItem(APIModel):

@@ -60,9 +60,15 @@
         class="event-details-panel__toggle"
         type="button"
         :aria-expanded="isOpen"
+        :aria-label="isOpen ? 'Скрыть детали событий' : 'Показать детали событий'"
+        :title="isOpen ? 'Скрыть детали событий' : 'Показать детали событий'"
         @click="isOpen = !isOpen"
       >
-        {{ isOpen ? 'Скрыть' : 'Подробнее' }}
+        <span
+          class="event-details-panel__chevron"
+          :class="{ 'event-details-panel__chevron--open': isOpen }"
+          aria-hidden="true"
+        />
       </button>
 
       <div v-if="isOpen" class="event-details-panel__body">
@@ -304,23 +310,42 @@ function formatDetailValue(value) {
 .event-details-panel {
   border-top: 1px solid #c6ccde;
   background: linear-gradient(180deg, #ffffff 0%, #f8faff 100%);
-  padding: 16px 14px;
+  padding: 10px 14px 16px;
 }
 
 .event-details-panel__toggle {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 142px;
-  margin: 0 auto;
-  padding: 9px 18px;
-  border: 1px solid rgba(59, 130, 246, 0.22);
+  width: 34px;
+  height: 28px;
+  margin: 0 auto 2px;
+  padding: 0;
+  border: 1px solid rgba(148, 163, 184, 0.38);
   border-radius: 999px;
-  background: rgba(59, 130, 246, 0.08);
-  color: #1d4ed8;
-  font-size: 14px;
-  font-weight: 600;
+  background: rgba(255, 255, 255, 0.82);
+  color: #334155;
   cursor: pointer;
+  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+
+.event-details-panel__toggle:hover {
+  background: #fff;
+  border-color: rgba(33, 86, 196, 0.36);
+  color: #2156c4;
+}
+
+.event-details-panel__chevron {
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 0.16s ease;
+}
+
+.event-details-panel__chevron--open {
+  transform: translateY(2px) rotate(225deg);
 }
 
 .event-details-panel__body {

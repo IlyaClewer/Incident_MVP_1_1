@@ -15,7 +15,7 @@ from app.services.mh_rn_diagnosis.diagnosis_persist_service import persist_diagn
 logger = logging.getLogger(__name__)
 
 
-async def main_async(experts_group_id: int = 1) -> None:
+async def main_async() -> None:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -42,13 +42,11 @@ async def main_async(experts_group_id: int = 1) -> None:
             calc_result = await calculate_diagnoses_for_mhrn(
                 session,
                 mh_rn=mh_rn,
-                experts_group_id=experts_group_id,
             )
             await persist_diagnoses_for_mhrn(
                 session,
                 mh_rn=mh_rn,
                 calc_result=calc_result,
-                experts_group_id=experts_group_id,
             )
             # Коммитим после каждой карты, чтобы большие объёмы не висели в транзакции
             await session.commit()

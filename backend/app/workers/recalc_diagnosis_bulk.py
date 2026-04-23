@@ -11,7 +11,7 @@ from app.services.mh_rn_diagnosis.diagnosis_persist_service import persist_diagn
 logger = logging.getLogger(__name__)
 
 
-async def main_async(experts_group_id: int = 1) -> None:
+async def main_async() -> None:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -20,10 +20,7 @@ async def main_async(experts_group_id: int = 1) -> None:
     # 1. Считаем диагнозы по всем mh_rn в одну структуру
     async with AsyncSessionLocal() as session:
         logger.info("Starting bulk diagnosis calculation...")
-        bulk_result = await calculate_all_diagnoses_bulk(
-            session,
-            experts_group_id=experts_group_id,
-        )
+        bulk_result = await calculate_all_diagnoses_bulk(session)
 
     if not bulk_result:
         logger.info("No diagnoses to recalc (empty bulk_result).")
@@ -38,7 +35,6 @@ async def main_async(experts_group_id: int = 1) -> None:
                 session,
                 mh_rn=mh_rn,
                 calc_result=calc_result,
-                experts_group_id=experts_group_id,
             )
             await session.commit()
 

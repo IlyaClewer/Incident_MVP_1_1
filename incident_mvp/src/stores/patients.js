@@ -111,6 +111,36 @@ function collectDiagnosisCardIds(diagnosisId, diagnosisStates) {
   ].sort((left, right) => left - right)
 }
 
+function getCardDiagnosisIds(stacCardDiagnosisIndex, stacCardId) {
+  return (stacCardDiagnosisIndex?.[String(stacCardId)] ?? [])
+    .map((diagnosisId) => Number(diagnosisId))
+    .filter((diagnosisId) => Number.isFinite(diagnosisId))
+}
+
+function getExpertGroupDiagnosisIds(expertGroups, expertGroupId) {
+  const group = (expertGroups ?? []).find(
+    (item) => String(item.id) === String(expertGroupId)
+  )
+
+  return (group?.diagnosis_ids ?? [])
+    .map((diagnosisId) => Number(diagnosisId))
+    .filter((diagnosisId) => Number.isFinite(diagnosisId))
+}
+
+function getDiagnosisStatesForCardDiagnosis(diagnosisStates, stacCardId, diagnosisId) {
+  return (diagnosisStates ?? [])
+    .filter(
+      (item) =>
+        String(item.stac_card_id) === String(stacCardId) &&
+        String(item.diagnosis_id) === String(diagnosisId)
+    )
+    .sort(
+      (left, right) =>
+        left.expert_group_id - right.expert_group_id ||
+        left.id - right.id
+    )
+}
+
 function normalizeDiagnosisState(item) {
   return {
     id: Number(item.id),
@@ -118,6 +148,20 @@ function normalizeDiagnosisState(item) {
     diagnosis_id: Number(item.diagnosis_id),
     expert_group_id: Number(item.expert_group_id),
     status: normalizeStatus(item.status),
+  }
+}
+
+function normalizeModelResult(item) {
+  const probability = Number(item?.probability)
+
+  return {
+    id: Number(item.id),
+    stac_card_id: Number(item.stac_card_id),
+    group_diagnosis_id:
+      item.group_diagnosis_id == null ? null : Number(item.group_diagnosis_id),
+    group_diagnosis_title: item.group_diagnosis_title ?? null,
+    has_complication: Boolean(item.has_complication),
+    probability: Number.isFinite(probability) ? probability : null,
   }
 }
 
@@ -326,8 +370,10 @@ export const usePatientsStore = defineStore('patients', {
     patients: [],
     stacCards: [],
     expertGroups: [],
+    groupDiagnoses: [],
     diagnoses: [],
     diagnosisStates: [],
+    modelResults: [],
     diagnosisStateIndex: {},
     stacCardDiagnosisIndex: {},
     eventsByCardId: {},
@@ -357,6 +403,11 @@ export const usePatientsStore = defineStore('patients', {
       state.diagnosisStateIndex[
         diagnosisStateKey(stacCardId, groupId, diagnosisId)
       ] ?? null,
+
+    getModelResultsForCard: (state) => (stacCardId) =>
+      (state.modelResults ?? []).filter(
+        (item) => String(item.stac_card_id) === String(stacCardId)
+      ),
 
     filteredDiagnosesNonEmpty(state) {
       return (state.diagnoses ?? []).filter(
@@ -409,11 +460,14 @@ export const usePatientsStore = defineStore('patients', {
       )
 
       if (state.selectedExpertGroupId && state.selectedExpertGroupId !== 'all') {
+        const allowedDiagnosisIds = new Set(
+          getExpertGroupDiagnosisIds(state.expertGroups, state.selectedExpertGroupId)
+        )
+
         cards = cards.filter((card) =>
-          state.diagnosisStates.some(
-            (item) =>
-              String(item.stac_card_id) === String(card.id) &&
-              String(item.expert_group_id) === String(state.selectedExpertGroupId)
+          allowedDiagnosisIds.size > 0 &&
+          getCardDiagnosisIds(state.stacCardDiagnosisIndex, card.id).some(
+            (diagnosisId) => allowedDiagnosisIds.has(diagnosisId)
           )
         )
       }
@@ -487,29 +541,52 @@ export const usePatientsStore = defineStore('patients', {
     },
 
     diagnosesForCardInGroup: (state) => (stacCardId, groupId) => {
-      const relevantStates = (state.diagnosisStates ?? [])
-        .filter(
-          (item) =>
-            String(item.stac_card_id) === String(stacCardId) &&
-            (groupId === 'all' || String(item.expert_group_id) === String(groupId))
-        )
-        .sort((left, right) => left.diagnosis_id - right.diagnosis_id)
+      const cardDiagnosisIds = getCardDiagnosisIds(
+        state.stacCardDiagnosisIndex,
+        stacCardId
+      )
+      const allowedDiagnosisIds =
+        groupId === 'all'
+          ? cardDiagnosisIds
+          : cardDiagnosisIds.filter((diagnosisId) =>
+              new Set(
+                getExpertGroupDiagnosisIds(state.expertGroups, groupId)
+              ).has(diagnosisId)
+            )
 
-      return relevantStates
-        .map((item) => {
+      return allowedDiagnosisIds
+        .sort((left, right) => left - right)
+        .map((diagnosisId) => {
           const diagnosis = (state.diagnoses ?? []).find(
-            (entry) => String(entry.id) === String(item.diagnosis_id)
+            (entry) => String(entry.id) === String(diagnosisId)
           )
 
           if (!diagnosis) {
             return null
           }
 
+          const relatedStates = getDiagnosisStatesForCardDiagnosis(
+            state.diagnosisStates,
+            stacCardId,
+            diagnosisId
+          )
+          const exactState =
+            groupId === 'all'
+              ? (relatedStates[0] ?? null)
+              : (
+                  relatedStates.find(
+                    (item) => String(item.expert_group_id) === String(groupId)
+                  ) ?? null
+                )
+
           return {
             ...diagnosis,
-            diagnosisStateId: item.id,
-            status: item.status,
-            expert_group_id: item.expert_group_id,
+            diagnosisStateId: exactState?.id ?? null,
+            status: exactState?.status ?? 'new',
+            expert_group_id:
+              exactState?.expert_group_id ??
+              (groupId === 'all' ? null : Number(groupId)),
+            relatedDiagnosisStateIds: relatedStates.map((item) => item.id),
           }
         })
         .filter(Boolean)
@@ -567,9 +644,17 @@ export const usePatientsStore = defineStore('patients', {
         const diagnosisStates = (meta?.diagnosis_states ?? []).map(normalizeDiagnosisState)
 
         this.expertGroups = [
-          { id: 'all', title: 'Все', diagnosis_ids: [] },
+          {
+            id: 'all',
+            title: 'Все',
+            diagnosis_ids: [],
+            group_diagnosis_ids: [],
+            primary_group_diagnosis_id: null,
+          },
           ...(meta?.expert_groups ?? []),
         ]
+        this.groupDiagnoses = meta?.group_diagnoses ?? []
+        this.modelResults = (meta?.model_results ?? []).map(normalizeModelResult)
         this.diagnosisStates = diagnosisStates
         this.diagnosisStateIndex = buildDiagnosisStateIndex(diagnosisStates)
         this.stacCardDiagnosisIndex = buildStacCardDiagnosisIndex(

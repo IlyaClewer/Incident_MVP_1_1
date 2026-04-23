@@ -28,7 +28,13 @@ async def create_expert_group(
     payload: ExpertGroupCreate,
     db: AsyncSession = Depends(get_db),
 ) -> ExpertGroupCatalogItem:
-    return await CatalogService.create_expert_group(db, payload.title, payload.diagnosis_ids)
+    return await CatalogService.create_expert_group(
+        db,
+        payload.title,
+        payload.diagnosis_ids,
+        payload.group_diagnosis_ids,
+        payload.primary_group_diagnosis_id,
+    )
 
 
 @router.patch("/expert-groups/{group_id}", response_model=ExpertGroupCatalogItem)
@@ -37,7 +43,14 @@ async def update_expert_group(
     payload: ExpertGroupUpdate,
     db: AsyncSession = Depends(get_db),
 ) -> ExpertGroupCatalogItem:
-    return await CatalogService.update_expert_group(db, group_id, payload.title, payload.diagnosis_ids)
+    return await CatalogService.update_expert_group(
+        db,
+        group_id,
+        payload.title,
+        payload.diagnosis_ids,
+        payload.group_diagnosis_ids,
+        payload.primary_group_diagnosis_id,
+    )
 
 
 @router.delete("/expert-groups/{group_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -10,8 +10,10 @@ from app.db.models import (
     DiagnosisEventDirectory,
     DiagnosisType,
     EventType,
+    ExpGroupGroupDiagnosis,
     ExpGroupDiagnosis,
     ExpertsGroup,
+    GroupDiagnosis,
 )
 from app.schemas.catalogs import (
     DiagnosisTypeCatalogItem,
@@ -47,7 +49,10 @@ class CatalogService:
     async def list_expert_groups(session: AsyncSession) -> list[ExpertGroupCatalogItem]:
         result = await session.execute(
             select(ExpertsGroup)
-            .options(selectinload(ExpertsGroup.diagnosis_links))
+            .options(
+                selectinload(ExpertsGroup.diagnosis_links),
+                selectinload(ExpertsGroup.diagnosis_group_links),
+            )
             .order_by(ExpertsGroup.id)
         )
         groups = result.scalars().unique().all()
@@ -57,6 +62,10 @@ class CatalogService:
                 id=group.id,
                 title=group.title,
                 diagnosis_ids=sorted({link.diagnosis_type_id for link in group.diagnosis_links}),
+                group_diagnosis_ids=sorted(
+                    {link.group_diagnosis_id for link in group.diagnosis_group_links}
+                ),
+                primary_group_diagnosis_id=group.group_diagnosis_id,
             )
             for group in groups
         ]
@@ -66,10 +75,30 @@ class CatalogService:
         session: AsyncSession,
         title: str,
         diagnosis_ids: list[int],
+        group_diagnosis_ids: list[int],
+        primary_group_diagnosis_id: int | None,
     ) -> ExpertGroupCatalogItem:
         valid_diagnosis_ids = await _ensure_existing_ids(session, DiagnosisType, diagnosis_ids, "diagnosis_ids")
+        valid_group_diagnosis_ids = await _ensure_existing_ids(
+            session,
+            GroupDiagnosis,
+            group_diagnosis_ids,
+            "group_diagnosis_ids",
+        )
+        if primary_group_diagnosis_id is not None:
+            primary_group_diagnosis_id = (
+                await _ensure_existing_ids(
+                    session,
+                    GroupDiagnosis,
+                    [primary_group_diagnosis_id],
+                    "primary_group_diagnosis_id",
+                )
+            )[0]
 
-        group = ExpertsGroup(title=title.strip())
+        group = ExpertsGroup(
+            title=title.strip(),
+            group_diagnosis_id=primary_group_diagnosis_id,
+        )
         session.add(group)
         await session.flush()
 
@@ -81,6 +110,14 @@ class CatalogService:
                 )
             )
 
+        for group_diagnosis_id in valid_group_diagnosis_ids:
+            session.add(
+                ExpGroupGroupDiagnosis(
+                    experts_group_id=group.id,
+                    group_diagnosis_id=group_diagnosis_id,
+                )
+            )
+
         await session.commit()
         await session.refresh(group)
 
@@ -88,6 +125,8 @@ class CatalogService:
             id=group.id,
             title=group.title,
             diagnosis_ids=valid_diagnosis_ids,
+            group_diagnosis_ids=valid_group_diagnosis_ids,
+            primary_group_diagnosis_id=group.group_diagnosis_id,
         )
 
     @staticmethod
@@ -96,11 +135,16 @@ class CatalogService:
         group_id: int,
         title: str | None,
         diagnosis_ids: list[int] | None,
+        group_diagnosis_ids: list[int] | None,
+        primary_group_diagnosis_id: int | None,
     ) -> ExpertGroupCatalogItem:
         result = await session.execute(
             select(ExpertsGroup)
             .where(ExpertsGroup.id == group_id)
-            .options(selectinload(ExpertsGroup.diagnosis_links))
+            .options(
+                selectinload(ExpertsGroup.diagnosis_links),
+                selectinload(ExpertsGroup.diagnosis_group_links),
+            )
         )
         group = result.scalar_one_or_none()
         if group is None:
@@ -110,6 +154,9 @@ class CatalogService:
             group.title = title.strip()
 
         resolved_diagnosis_ids: list[int]
+        resolved_group_diagnosis_ids = sorted(
+            {link.group_diagnosis_id for link in group.diagnosis_group_links}
+        )
         if diagnosis_ids is not None:
             resolved_diagnosis_ids = await _ensure_existing_ids(session, DiagnosisType, diagnosis_ids, "diagnosis_ids")
             await session.execute(
@@ -125,16 +172,51 @@ class CatalogService:
         else:
             resolved_diagnosis_ids = sorted({link.diagnosis_type_id for link in group.diagnosis_links})
 
+        if group_diagnosis_ids is not None:
+            resolved_group_diagnosis_ids = await _ensure_existing_ids(
+                session,
+                GroupDiagnosis,
+                group_diagnosis_ids,
+                "group_diagnosis_ids",
+            )
+            await session.execute(
+                delete(ExpGroupGroupDiagnosis).where(
+                    ExpGroupGroupDiagnosis.experts_group_id == group_id
+                )
+            )
+            for group_diagnosis_id in resolved_group_diagnosis_ids:
+                session.add(
+                    ExpGroupGroupDiagnosis(
+                        experts_group_id=group_id,
+                        group_diagnosis_id=group_diagnosis_id,
+                    )
+                )
+
+        if primary_group_diagnosis_id is not None:
+            group.group_diagnosis_id = (
+                await _ensure_existing_ids(
+                    session,
+                    GroupDiagnosis,
+                    [primary_group_diagnosis_id],
+                    "primary_group_diagnosis_id",
+                )
+            )[0]
+
         await session.commit()
         return ExpertGroupCatalogItem(
             id=group.id,
             title=group.title,
             diagnosis_ids=resolved_diagnosis_ids,
+            group_diagnosis_ids=resolved_group_diagnosis_ids,
+            primary_group_diagnosis_id=group.group_diagnosis_id,
         )
 
     @staticmethod
     async def delete_expert_group(session: AsyncSession, group_id: int) -> None:
         await session.execute(delete(ExpGroupDiagnosis).where(ExpGroupDiagnosis.experts_group_id == group_id))
+        await session.execute(
+            delete(ExpGroupGroupDiagnosis).where(ExpGroupGroupDiagnosis.experts_group_id == group_id)
+        )
         result = await session.execute(select(ExpertsGroup).where(ExpertsGroup.id == group_id))
         group = result.scalar_one_or_none()
         if group is None:

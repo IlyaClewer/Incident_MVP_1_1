@@ -1,6 +1,6 @@
 <template>
   <div class="events-toolbar">
-    <div class="events-toolbar__left">
+    <div class="events-toolbar__top">
       <div class="expert-tabs">
         <button
           v-for="group in groups"
@@ -14,6 +14,16 @@
         </button>
       </div>
 
+      <div v-if="modelProbability" class="model-probability">
+        <div class="model-probability__label">Вероятность</div>
+        <div class="model-probability__value">
+          <span class="model-probability__group">{{ modelProbability.title }}</span>
+          <span class="model-probability__percent">{{ modelProbability.percent }}%</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="events-toolbar__bottom">
       <div class="diagnosis-tabs">
         <button
           v-for="diagnosis in diagnoses"
@@ -26,46 +36,46 @@
           {{ diagnosis }}
         </button>
       </div>
-    </div>
 
-    <div class="events-toolbar__right">
-      <template v-if="showDecisionButtons">
+      <div class="events-toolbar__actions">
+        <template v-if="showDecisionButtons">
+          <button
+            class="state-btn"
+            type="button"
+            :disabled="!canChangeState || isSubmitting"
+            @click="openAction('accept')"
+          >
+            Принять
+          </button>
+          <button
+            class="state-btn state-btn--red"
+            type="button"
+            :disabled="!canChangeState || isSubmitting"
+            @click="openAction('reject')"
+          >
+            Отклонить
+          </button>
+        </template>
+
+        <button
+          v-if="showReturnButton"
+          class="state-btn"
+          type="button"
+          :disabled="!canReturn || isSubmitting"
+          @click="openAction('return')"
+        >
+          Вернуть
+        </button>
+
         <button
           class="state-btn"
           type="button"
-          :disabled="!canChangeState || isSubmitting"
-          @click="openAction('accept')"
+          :disabled="isSubmitting"
+          @click="onTransfer"
         >
-          Принять
+          {{ transferButtonLabel }}
         </button>
-        <button
-          class="state-btn state-btn--red"
-          type="button"
-          :disabled="!canChangeState || isSubmitting"
-          @click="openAction('reject')"
-        >
-          Отклонить
-        </button>
-      </template>
-
-      <button
-        v-if="showReturnButton"
-        class="state-btn"
-        type="button"
-        :disabled="!canReturn || isSubmitting"
-        @click="openAction('return')"
-      >
-        Вернуть
-      </button>
-
-      <button
-        class="state-btn"
-        type="button"
-        :disabled="isSubmitting"
-        @click="onTransfer"
-      >
-        {{ transferButtonLabel }}
-      </button>
+      </div>
     </div>
   </div>
 
@@ -146,6 +156,7 @@ const props = defineProps({
   active: { type: [String, Number], default: '' },
   diagnoses: { type: Array, default: () => [] },
   activeDiagnosis: { type: String, default: '' },
+  modelProbability: { type: Object, default: null },
   stacCardId: { type: [String, Number], default: null },
   diagnosisStateId: { type: [String, Number], default: null },
   diagnosisStatus: { type: String, default: '' },
@@ -364,73 +375,151 @@ async function onConfirmTransfer(close) {
 <style scoped>
 .events-toolbar {
   display: grid;
-  grid-template-columns: 1fr auto;
-  grid-template-rows: auto auto;
-  column-gap: 14px;
-  row-gap: 6px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "top model"
+    "bottom actions";
+  column-gap: 36px;
+  row-gap: 14px;
   margin: 0;
-  padding: 10px 12px;
+  padding: 12px 14px 14px;
   border-bottom: 1px solid #c6ccde;
-  background: linear-gradient(180deg, #f6f7fc 0%, #eef1fb 100%);
+  background:
+    linear-gradient(180deg, rgba(248, 250, 255, 0.98) 0%, rgba(241, 245, 252, 0.98) 100%);
 }
 
-.events-toolbar__left {
-  grid-column: 1;
-  grid-row: 1 / span 2;
-  display: grid;
-  grid-template-columns: auto 1fr;
-  grid-template-rows: auto auto;
-  row-gap: 6px;
-  align-items: center;
+.events-toolbar__top {
+  grid-area: top;
+  min-width: 0;
 }
 
 .expert-tabs {
-  grid-column: 2;
-  grid-row: 1;
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  align-items: center;
+  max-width: 100%;
+}
+
+.events-toolbar__bottom {
+  grid-area: bottom;
+  min-width: 0;
 }
 
 .diagnosis-tabs {
-  grid-column: 2;
-  grid-row: 2;
   display: flex;
-  gap: 8px;
+  gap: 12px;
   flex-wrap: wrap;
+  padding-top: 2px;
 }
 
-.events-toolbar__right {
-  grid-column: 2;
-  grid-row: 2;
+.events-toolbar__actions {
+  grid-area: actions;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
   align-self: end;
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
 }
 
-.expert-tab,
+.expert-tab {
+  position: relative;
+  min-height: 34px;
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  background: rgba(255, 255, 255, 0.76);
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: #263a5e;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+}
+
 .diagnosis-tab {
-  border: 1px solid #c6ccde;
+  border: 1px solid rgba(198, 204, 222, 0.95);
   background: #fff;
   border-radius: 999px;
-  padding: 5px 10px;
-  font-size: 12.5px;
+  padding: 7px 15px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #172033;
   cursor: pointer;
+  transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
-.expert-tab:not(.expert-tab--active):hover,
+.expert-tab:not(.expert-tab--active):hover {
+  background: #fff;
+  border-color: rgba(33, 86, 196, 0.38);
+  color: #1e4fae;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+}
+
 .diagnosis-tab:not(.diagnosis-tab--active):hover {
   background: #eaf2ff;
   border-color: #93c5fd;
 }
 
-.expert-tab--active,
+.expert-tab--active {
+  background: #2156c4;
+  border-color: #2156c4;
+  color: #fff;
+  box-shadow: 0 6px 14px rgba(33, 86, 196, 0.18);
+}
+
 .diagnosis-tab--active {
   background: #2156c4;
   border-color: #2156c4;
   color: #fff;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.08);
+  box-shadow: 0 6px 16px rgba(33, 86, 196, 0.18);
+}
+
+.model-probability {
+  grid-area: model;
+  align-self: start;
+  width: 420px;
+  max-width: 32vw;
+  padding: 8px 10px;
+  border: 1px solid rgba(33, 86, 196, 0.16);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.68);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+  backdrop-filter: blur(8px);
+}
+
+.model-probability__label {
+  margin-bottom: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #597097;
+}
+
+.model-probability__value {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.model-probability__group {
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #1f314f;
+}
+
+.model-probability__percent {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(33, 86, 196, 0.08);
+  font-size: 15px;
+  font-weight: 700;
+  color: #2156c4;
 }
 
 .modal-field-label {
@@ -472,30 +561,35 @@ async function onConfirmTransfer(close) {
 @media (max-width: 980px) {
   .events-toolbar {
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto;
+    grid-template-areas:
+      "top"
+      "model"
+      "bottom"
+      "actions";
   }
 
-  .events-toolbar__left {
-    grid-column: 1;
-    grid-row: 1;
+  .model-probability {
+    width: 100%;
+    max-width: 100%;
   }
 
-  .events-toolbar__right {
-    grid-column: 1;
-    grid-row: 2;
+  .events-toolbar__actions {
     justify-content: flex-start;
   }
 }
 
 @media (max-width: 720px) {
-  .events-toolbar__left {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto auto;
+  .events-toolbar {
+    padding: 10px 12px 12px;
   }
 
-  .expert-tabs,
-  .diagnosis-tabs {
-    grid-column: 1;
+  .model-probability {
+    width: 100%;
+  }
+
+  .model-probability__value {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 </style>

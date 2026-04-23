@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Integer, SmallInteger, String, Text, Float, Numeric
+from sqlalchemy import BigInteger, Boolean, Integer, SmallInteger, String, Text, Float, Numeric
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TIMESTAMP
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -87,6 +87,25 @@ class RemoteIncEvent(Base):
     event_timestamp: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=False), nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=False), nullable=True)
     updated_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=False), nullable=True)
+
+
+class RemoteIncGroupDiagnosis(Base):
+    __tablename__ = "inc_group_diagnosis"
+    __table_args__ = {"schema": "remote"}
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class RemoteIncForModel(Base):
+    __tablename__ = "inc_for_model"
+    __table_args__ = {"schema": "remote"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    mh_rn: Mapped[int] = mapped_column(Integer, nullable=False)
+    group_diagnosis_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    has_complication: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    probability: Mapped[float | None] = mapped_column(Numeric, nullable=True)
 
 
 class FullEvent(Base):

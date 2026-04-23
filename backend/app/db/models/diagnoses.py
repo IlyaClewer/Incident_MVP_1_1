@@ -92,6 +92,9 @@ class DiagnosisEventDirectory(Base):
 
 class ExpGroupDiagnosis(Base):
     __tablename__ = "exp_groups_diagnosis"
+    __table_args__ = (
+        UniqueConstraint("experts_group_id", "diagnosis_type_id", name="uq_exp_groups_diagnosis_group_diagnosis"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     experts_group_id: Mapped[int] = mapped_column(ForeignKey("experts_groups.id"), nullable=False)
@@ -99,3 +102,36 @@ class ExpGroupDiagnosis(Base):
 
     experts_group: Mapped["ExpertsGroup"] = relationship(back_populates="diagnosis_links")
     diagnosis_type: Mapped["DiagnosisType"] = relationship(back_populates="exp_group_links")
+
+
+class GroupDiagnosis(Base):
+    __tablename__ = "group_diagnosis"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+
+    expert_group_links: Mapped[list["ExpGroupGroupDiagnosis"]] = relationship(
+        back_populates="group_diagnosis"
+    )
+    primary_expert_groups: Mapped[list["ExpertsGroup"]] = relationship(
+        back_populates="primary_group_diagnosis",
+        foreign_keys="ExpertsGroup.group_diagnosis_id",
+    )
+
+
+class ExpGroupGroupDiagnosis(Base):
+    __tablename__ = "exp_groups_group_diagnosis"
+    __table_args__ = (
+        UniqueConstraint(
+            "experts_group_id",
+            "group_diagnosis_id",
+            name="uq_exp_groups_group_diagnosis_group_diagnosis",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    experts_group_id: Mapped[int] = mapped_column(ForeignKey("experts_groups.id"), nullable=False)
+    group_diagnosis_id: Mapped[int] = mapped_column(ForeignKey("group_diagnosis.id"), nullable=False)
+
+    experts_group: Mapped["ExpertsGroup"] = relationship(back_populates="diagnosis_group_links")
+    group_diagnosis: Mapped["GroupDiagnosis"] = relationship(back_populates="expert_group_links")

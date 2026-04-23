@@ -34,6 +34,7 @@
           :active="activeExpertGroupId"
           :diagnoses="diagnosisTabTitles"
           :active-diagnosis="activeDiagnosisTitle"
+          :model-probability="modelProbabilityPlaceholder"
           :stac-card-id="card?.id ?? null"
           :diagnosis-state-id="activeDiagnosis?.diagnosisStateId ?? null"
           :diagnosis-status="activeDiagnosis?.status ?? ''"
@@ -108,6 +109,8 @@ const expertGroupsForToolbar = computed(() => {
   const list = availableExpertGroupsForCard.value.map((group) => ({
     id: group.id,
     title: group.title,
+    group_diagnosis_ids: group.group_diagnosis_ids ?? [],
+    primary_group_diagnosis_id: group.primary_group_diagnosis_id ?? null,
   }))
 
   return list.length > 0 ? list : [{ id: 'all', title: 'Без диагнозов' }]
@@ -115,6 +118,63 @@ const expertGroupsForToolbar = computed(() => {
 
 const activeExpertGroupId = ref('all')
 const selectedEventIds = ref([])
+
+const activeExpertGroup = computed(
+  () =>
+    expertGroupsForToolbar.value.find(
+      (group) => String(group.id) === String(activeExpertGroupId.value)
+    ) ?? null
+)
+
+const activeExpertGroupDiagnosisGroupIds = computed(() => {
+  if (!activeExpertGroup.value || String(activeExpertGroup.value.id) === 'all') {
+    return []
+  }
+
+  return [
+    activeExpertGroup.value.primary_group_diagnosis_id,
+    ...(activeExpertGroup.value.group_diagnosis_ids ?? []),
+  ]
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value))
+})
+
+const modelProbabilityPlaceholder = computed(() => {
+  if (!card.value || activeExpertGroupDiagnosisGroupIds.value.length === 0) {
+    return null
+  }
+
+  const visibleGroupDiagnosisIds = new Set(activeExpertGroupDiagnosisGroupIds.value)
+  const modelResult = store
+    .getModelResultsForCard(card.value.id)
+    .filter(
+      (item) =>
+        item.has_complication &&
+        item.group_diagnosis_id != null &&
+        visibleGroupDiagnosisIds.has(Number(item.group_diagnosis_id))
+    )
+    .sort((left, right) => (right.probability ?? 0) - (left.probability ?? 0))[0]
+
+  if (!modelResult) {
+    return null
+  }
+
+  const probability = Number(modelResult.probability)
+  const percent = Number.isFinite(probability)
+    ? Math.round(probability <= 1 ? probability * 100 : probability)
+    : null
+  const diagnosisGroup = (store.groupDiagnoses ?? []).find(
+    (item) => String(item.id) === String(modelResult.group_diagnosis_id)
+  )
+
+  return {
+    title:
+      modelResult.group_diagnosis_title ||
+      diagnosisGroup?.title ||
+      'Группа диагнозов не задана',
+    percent: percent ?? 0,
+  }
+})
 
 const cardDiagnosesInGroup = computed(() => {
   if (!card.value) {

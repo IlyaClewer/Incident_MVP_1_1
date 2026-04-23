@@ -6,7 +6,14 @@ from app.schemas.diagnosis_states import (
     DiagnosisStateUpdateResponse,
 )
 from app.schemas.events import EventDetailField, StacCardEventItem, StacCardEventsResponse
-from app.schemas.meta import DiagnosisMeta, DiagnosisStateMeta, ExpertGroupMeta, MetaResponse
+from app.schemas.meta import (
+    DiagnosisMeta,
+    DiagnosisStateMeta,
+    ExpertGroupMeta,
+    GroupDiagnosisMeta,
+    MetaResponse,
+    ModelResultMeta,
+)
 from app.schemas.patients import PatientSummary, PatientsResponse, StacCardSummary
 
 __all__ = [
@@ -19,7 +26,9 @@ __all__ = [
     "DiagnosisStateUpdateResponse",
     "EventDetailField",
     "ExpertGroupMeta",
+    "GroupDiagnosisMeta",
     "MetaResponse",
+    "ModelResultMeta",
     "PatientSummary",
     "PatientsResponse",
     "StacCardEventItem",
